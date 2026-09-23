@@ -4,7 +4,7 @@ import type { DoseLog, Medicine, MedicineInput, TodayDose } from "./types";
 
 type ExpoConfig = { extra?: { backendUrl?: string } };
 const config = Constants.expoConfig as ExpoConfig | null;
-const configuredUrl = config?.extra?.backendUrl ?? process.env.EXPO_PUBLIC_BACKEND_URL;
+const configuredUrl = config?.extra?.backendUrl ?? process.env.EXPO_BACKEND_URL ?? process.env.EXPO_PUBLIC_BACKEND_URL;
 export const API_BASE_URL = `${configuredUrl?.replace(/\/$/, "") ?? ""}/api`;
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
