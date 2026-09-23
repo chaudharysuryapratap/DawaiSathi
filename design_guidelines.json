@@ -1,0 +1,147 @@
+{
+  "app_name": "DawaiSathi",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "A calm, minimalist medication companion designed for effortless daily health tracking and punctual reminders.",
+  "color": {
+    "surface": "#FDFCFA",
+    "onSurface": "#1C1C1E",
+    "surfaceSecondary": "#F5F5F0",
+    "onSurfaceSecondary": "#3A3A3C",
+    "surfaceTertiary": "#EAEAE0",
+    "onSurfaceTertiary": "#636366",
+    "surfaceInverse": "#1C1C1E",
+    "onSurfaceInverse": "#FDFCFA",
+    "brand": "#3B7A57",
+    "brandPrimary": "#3B7A57",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#5B9A77",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#E6F0EC",
+    "success": "#2E7D32",
+    "onSuccess": "#FFFFFF",
+    "warning": "#C67D0A",
+    "onWarning": "#FFFFFF",
+    "error": "#BA1A1A",
+    "onError": "#FFFFFF",
+    "info": "#2B6CB0",
+    "onInfo": "#FFFFFF",
+    "border": "#E5E5EA",
+    "borderStrong": "#C7C7CC",
+    "divider": "#EFEFF4",
+    "muted": "#8E8E93",
+    "onBrand": "#FFFFFF"
+  },
+  "typography": {
+    "displayFontFamily": "System",
+    "textFontFamily": "System",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous iOS spacing rhythm with comfortable padding and touch targets >= 44pt",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Ionicons",
+  "glassmorphism": {
+    "enabled": true,
+    "dos": [
+      "Use frosted glass for sticky headers and bottom tabs over scrolling content",
+      "Apply translucent surface tint with proper contrast"
+    ],
+    "donts": [
+      "Never apply blur to form fields or body text",
+      "Avoid heavy blur that degrades performance"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Today Dashboard",
+      "purpose": "Overview of today's schedule, pending doses, adherence streak, and quick confirmation actions.",
+      "states": {
+        "loading": "Centered minimalist spinner with calming message",
+        "empty": "Clean illustration with a single 'Add your first medicine' CTA button",
+        "error": "Readable alert with retry button"
+      },
+      "layout": "Sticky date header, adherence progress pill banner, section list of upcoming and taken doses with one-tap confirm actions, and bottom navigation."
+    },
+    {
+      "name": "Add / Edit Medicine",
+      "purpose": "Streamlined, single-column form to register a medicine, set dosage strength, frequency, and reminder times.",
+      "states": {
+        "loading": "Standard form skeleton",
+        "empty": "N/A",
+        "error": "Inline validation errors for missing fields"
+      },
+      "layout": "Scrollable form with clean label-above-input rows, pill selectors for frequency and timing, and a sticky bottom primary action button."
+    },
+    {
+      "name": "Medicine Library",
+      "purpose": "Browse, search, and manage all active and archived medicines with quick stock checks.",
+      "states": {
+        "loading": "List skeleton loader",
+        "empty": "Empty state with search reset and add CTA",
+        "error": "Error retry state"
+      },
+      "layout": "Top search bar, categorized list of medicine cards showing remaining pills, dosage, and frequency with tap-to-view details."
+    },
+    {
+      "name": "Settings & Reminders",
+      "purpose": "Manage sound notifications, backup settings, emergency contacts, and app appearance.",
+      "states": {
+        "loading": "Standard loader",
+        "empty": "N/A",
+        "error": "Error state"
+      },
+      "layout": "Grouped iOS preference rows with toggles and clean chevrons."
+    }
+  ],
+  "images": {
+    "hero_banner": {
+      "url": "https://images.unsplash.com/photo-1558632218-4d2bc591f898?auto=format&fit=crop&w=1200&q=80",
+      "dark": "https://images.unsplash.com/photo-1558632218-4d2bc591f898?auto=format&fit=crop&w=1200&q=80",
+      "alt": "Minimalist healthcare and medicine bottle setup"
+    },
+    "empty_state": {
+      "url": "https://images.unsplash.com/photo-1704895376532-c565c7c3c231?auto=format&fit=crop&w=800&q=80",
+      "alt": "Clean medical bottle empty state illustration"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Preserve all existing DawaiSathi medicine reminder functionality including reminder scheduling, dose logging, and library management.",
+    "Adopt the iOS-Native Clean personality with warm bone-white surfaces and botanical green accents (#3B7A57).",
+    "Ensure all touch targets are >= 44x44pt and safe area insets are respected on all screens.",
+    "Implement sticky primary CTAs on data entry and add-medicine forms so users never have to scroll to save.",
+    "Ensure every screen has robust Loading, Empty, and Error states."
+  ]
+}
