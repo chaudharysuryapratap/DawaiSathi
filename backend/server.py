@@ -24,6 +24,7 @@ api_router = APIRouter(prefix="/api")
 
 MEMBER_COLORS = ["#3B7A57", "#C67D0A", "#2B6CB0", "#8E4EC6", "#BA1A1A", "#0EA5A0"]
 DEFAULT_DAYS = [0, 1, 2, 3, 4, 5, 6]
+EYE_VALUES = {"left", "right", "both"}
 
 
 def now_utc() -> datetime:
@@ -47,6 +48,13 @@ def time_slot(hhmm: str) -> str:
     if 17 <= hour < 21:
         return "evening"
     return "night"
+
+
+def add_minutes_to_time(start: str, minutes: int) -> str:
+    hour, minute = (int(value) for value in start.split(":"))
+    total = hour * 60 + minute + minutes
+    total = total % (24 * 60)
+    return f"{total // 60:02d}:{total % 60:02d}"
 
 
 class Member(BaseModel):
@@ -144,9 +152,95 @@ class TodayDose(BaseModel):
     log_id: Optional[str] = None
 
 
+# ---------------------------------------------------------------------------
+# Staggered eye-drop protocols
+# ---------------------------------------------------------------------------
+
+
+class EyeDropStepInput(BaseModel):
+    medicine_name: str = Field(min_length=1, max_length=80)
+    dose: str = Field(default="1 drop", max_length=40)
+    eye: str = Field(default="both", max_length=10)
+
+
+class EyeDropStep(BaseModel):
+    order: int
+    medicine_name: str
+    dose: str
+    eye: str
+
+
+class EyeDropProtocolCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    start_time: str = Field(min_length=1, max_length=10)
+    interval_minutes: int = Field(default=5, ge=1, le=180)
+    steps: List[EyeDropStepInput] = Field(min_length=1, max_length=12)
+    member_id: Optional[str] = None
+    days: List[int] = Field(default_factory=lambda: list(DEFAULT_DAYS))
+
+
+class EyeDropProtocolUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    start_time: Optional[str] = Field(default=None, min_length=1, max_length=10)
+    interval_minutes: Optional[int] = Field(default=None, ge=1, le=180)
+    steps: Optional[List[EyeDropStepInput]] = Field(default=None, min_length=1, max_length=12)
+    member_id: Optional[str] = None
+    days: Optional[List[int]] = None
+    active: Optional[bool] = None
+
+
+class EyeDropProtocol(BaseModel):
+    id: str
+    name: str
+    start_time: str
+    interval_minutes: int
+    steps: List[EyeDropStep]
+    member_id: Optional[str] = None
+    days: List[int]
+    active: bool = True
+    created_at: str
+
+
+class ProtocolStepLog(BaseModel):
+    id: str
+    protocol_id: str
+    protocol_name: str
+    step_order: int
+    medicine_name: str
+    dose: str
+    eye: str
+    time: str
+    logged_at: str
+    local_date: str
+    member_id: Optional[str] = None
+
+
+class TodayProtocolStep(BaseModel):
+    order: int
+    medicine_name: str
+    dose: str
+    eye: str
+    time: str
+    logged_at: Optional[str] = None
+    log_id: Optional[str] = None
+
+
+class TodayProtocol(BaseModel):
+    protocol_id: str
+    name: str
+    start_time: str
+    end_time: str
+    interval_minutes: int
+    time_slot: str
+    member_id: Optional[str] = None
+    member_name: str = ""
+    steps: List[TodayProtocolStep]
+
+
 class TodayResponse(BaseModel):
     date: str
     doses: List[TodayDose]
+    protocols: List[TodayProtocol] = Field(default_factory=list)
 
 
 class CheckupCreate(BaseModel):
@@ -186,6 +280,7 @@ class AttentionItem(BaseModel):
     when: str
     medicine_id: Optional[str] = None
     checkup_id: Optional[str] = None
+    protocol_id: Optional[str] = None
     member_id: Optional[str] = None
 
 
@@ -225,6 +320,28 @@ async def load_medicines_map() -> dict:
 async def load_members_map() -> dict:
     documents = await db.members.find({}, {"_id": 0}).to_list(200)
     return {document["id"]: document for document in documents}
+
+
+def _dose_matches_day(medicine: dict, weekday: int) -> bool:
+    days = medicine.get("days") or list(DEFAULT_DAYS)
+    return weekday in days
+
+
+def _sanitize_eye(value: str) -> str:
+    normalised = (value or "both").strip().lower()
+    return normalised if normalised in EYE_VALUES else "both"
+
+
+def _build_protocol_steps(inputs: List[EyeDropStepInput]) -> List[dict]:
+    return [
+        {
+            "order": index + 1,
+            "medicine_name": step.medicine_name.strip(),
+            "dose": step.dose.strip() or "1 drop",
+            "eye": _sanitize_eye(step.eye),
+        }
+        for index, step in enumerate(inputs)
+    ]
 
 
 @app.on_event("startup")
@@ -282,6 +399,7 @@ async def remove_member(member_id: str):
         raise HTTPException(status_code=400, detail="Primary member cannot be removed")
     await db.members.delete_one({"id": member_id})
     await db.medicines.update_many({"member_id": member_id}, {"$set": {"member_id": None}})
+    await db.eye_drop_protocols.update_many({"member_id": member_id}, {"$set": {"member_id": None}})
     return {"ok": True}
 
 
@@ -368,9 +486,129 @@ async def restore_medicine(medicine_id: str):
     return Medicine(**document)
 
 
-def _dose_matches_day(medicine: dict, weekday: int) -> bool:
-    days = medicine.get("days") or list(DEFAULT_DAYS)
-    return weekday in days
+# ---------------------------------------------------------------------------
+# Eye-drop protocol endpoints
+# ---------------------------------------------------------------------------
+
+
+@api_router.get("/eye-drop-protocols", response_model=List[EyeDropProtocol])
+async def list_protocols(active_only: bool = True, member_id: Optional[str] = None):
+    query: dict = {}
+    if active_only:
+        query["active"] = True
+    if member_id is not None:
+        query["$or"] = [{"member_id": member_id}, {"member_id": None}]
+    documents = await db.eye_drop_protocols.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return [EyeDropProtocol(**document) for document in documents]
+
+
+@api_router.post("/eye-drop-protocols", response_model=EyeDropProtocol)
+async def create_protocol(input: EyeDropProtocolCreate):
+    days = input.days or list(DEFAULT_DAYS)
+    document = {
+        "id": str(uuid.uuid4()),
+        "name": input.name.strip(),
+        "start_time": input.start_time,
+        "interval_minutes": input.interval_minutes,
+        "steps": _build_protocol_steps(input.steps),
+        "member_id": input.member_id,
+        "days": days,
+        "active": True,
+        "created_at": now_iso(),
+    }
+    await db.eye_drop_protocols.insert_one(document)
+    return EyeDropProtocol(**document)
+
+
+@api_router.patch("/eye-drop-protocols/{protocol_id}", response_model=EyeDropProtocol)
+async def update_protocol(protocol_id: str, input: EyeDropProtocolUpdate):
+    updates = input.model_dump(exclude_unset=True)
+    if "name" in updates and isinstance(updates["name"], str):
+        updates["name"] = updates["name"].strip()
+    if "steps" in updates and updates["steps"] is not None:
+        updates["steps"] = _build_protocol_steps(
+            [EyeDropStepInput(**step) if not isinstance(step, EyeDropStepInput) else step for step in updates["steps"]]
+        )
+    if not updates:
+        raise HTTPException(status_code=400, detail="No changes supplied")
+    result = await db.eye_drop_protocols.update_one({"id": protocol_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Protocol not found")
+    document = await db.eye_drop_protocols.find_one({"id": protocol_id}, {"_id": 0})
+    return EyeDropProtocol(**document)
+
+
+@api_router.delete("/eye-drop-protocols/{protocol_id}")
+async def archive_protocol(protocol_id: str):
+    result = await db.eye_drop_protocols.update_one(
+        {"id": protocol_id, "active": True},
+        {"$set": {"active": False}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Protocol not found")
+    return {"ok": True}
+
+
+@api_router.post("/eye-drop-protocols/{protocol_id}/step/{order}/log", response_model=ProtocolStepLog)
+async def log_protocol_step(protocol_id: str, order: int):
+    protocol = await db.eye_drop_protocols.find_one({"id": protocol_id, "active": True}, {"_id": 0})
+    if not protocol:
+        raise HTTPException(status_code=404, detail="Protocol not found")
+    step = next((item for item in protocol.get("steps", []) if item["order"] == order), None)
+    if not step:
+        raise HTTPException(status_code=404, detail="Step not found")
+    time_value = add_minutes_to_time(protocol["start_time"], protocol["interval_minutes"] * (order - 1))
+    date_value = local_date()
+    existing = await db.protocol_step_logs.find_one(
+        {"protocol_id": protocol_id, "step_order": order, "local_date": date_value},
+        {"_id": 0},
+    )
+    if existing:
+        return ProtocolStepLog(**existing)
+    document = {
+        "id": str(uuid.uuid4()),
+        "protocol_id": protocol_id,
+        "protocol_name": protocol["name"],
+        "step_order": order,
+        "medicine_name": step["medicine_name"],
+        "dose": step["dose"],
+        "eye": step["eye"],
+        "time": time_value,
+        "logged_at": now_iso(),
+        "local_date": date_value,
+        "member_id": protocol.get("member_id"),
+    }
+    await db.protocol_step_logs.insert_one(document)
+    return ProtocolStepLog(**document)
+
+
+@api_router.delete("/eye-drop-protocols/{protocol_id}/step/{order}/log")
+async def undo_protocol_step(protocol_id: str, order: int, date: Optional[str] = None):
+    date_value = date or local_date()
+    result = await db.protocol_step_logs.find_one_and_delete(
+        {"protocol_id": protocol_id, "step_order": order, "local_date": date_value}
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Step log not found")
+    return {"ok": True}
+
+
+@api_router.get("/eye-drop-protocols/history", response_model=List[ProtocolStepLog])
+async def protocol_history(
+    limit: int = Query(default=200, ge=1, le=500),
+    member_id: Optional[str] = None,
+    protocol_id: Optional[str] = None,
+    date: Optional[str] = None,
+):
+    query: dict = {}
+    if member_id is not None:
+        query["member_id"] = member_id
+    if protocol_id is not None:
+        query["protocol_id"] = protocol_id
+    if date is not None:
+        query["local_date"] = date
+    documents = await db.protocol_step_logs.find(query, {"_id": 0}).sort("logged_at", -1).to_list(limit)
+    return [ProtocolStepLog(**document) for document in documents]
 
 
 @api_router.get("/today", response_model=TodayResponse)
@@ -384,6 +622,7 @@ async def today(member_id: Optional[str] = None):
     logs = await db.dose_logs.find({"local_date": today_value}, {"_id": 0}).to_list(600)
     log_index = {(log["medicine_id"], log["time"]): log for log in logs}
     members_map = await load_members_map()
+
     doses: List[TodayDose] = []
     for medicine in medicines:
         if not _dose_matches_day(medicine, weekday):
@@ -409,7 +648,51 @@ async def today(member_id: Optional[str] = None):
                 )
             )
     doses.sort(key=lambda dose: dose.time)
-    return TodayResponse(date=today_value, doses=doses)
+
+    protocol_query: dict = {"active": True}
+    if member_id is not None:
+        protocol_query["$or"] = [{"member_id": member_id}, {"member_id": None}]
+    protocols_docs = await db.eye_drop_protocols.find(protocol_query, {"_id": 0}).to_list(200)
+    step_logs = await db.protocol_step_logs.find({"local_date": today_value}, {"_id": 0}).to_list(600)
+    step_index = {(entry["protocol_id"], entry["step_order"]): entry for entry in step_logs}
+    protocols: List[TodayProtocol] = []
+    for protocol in protocols_docs:
+        if not _dose_matches_day(protocol, weekday):
+            continue
+        member = members_map.get(protocol.get("member_id") or "")
+        steps: List[TodayProtocolStep] = []
+        interval = int(protocol.get("interval_minutes", 5))
+        for step in protocol.get("steps", []):
+            time_value = add_minutes_to_time(protocol["start_time"], interval * (int(step["order"]) - 1))
+            log = step_index.get((protocol["id"], int(step["order"])))
+            steps.append(
+                TodayProtocolStep(
+                    order=int(step["order"]),
+                    medicine_name=step["medicine_name"],
+                    dose=step["dose"],
+                    eye=step["eye"],
+                    time=time_value,
+                    logged_at=log.get("logged_at") if log else None,
+                    log_id=log.get("id") if log else None,
+                )
+            )
+        end_time = steps[-1].time if steps else protocol["start_time"]
+        protocols.append(
+            TodayProtocol(
+                protocol_id=protocol["id"],
+                name=protocol["name"],
+                start_time=protocol["start_time"],
+                end_time=end_time,
+                interval_minutes=interval,
+                time_slot=time_slot(protocol["start_time"]),
+                member_id=protocol.get("member_id"),
+                member_name=member.get("name", "") if member else "",
+                steps=steps,
+            )
+        )
+    protocols.sort(key=lambda item: item.start_time)
+
+    return TodayResponse(date=today_value, doses=doses, protocols=protocols)
 
 
 @api_router.post("/medicines/{medicine_id}/dose", response_model=DoseLog)
@@ -610,6 +893,49 @@ async def attention():
                     member_id=medicine.get("member_id"),
                 )
             )
+
+    protocols_docs = await db.eye_drop_protocols.find({"active": True}, {"_id": 0}).to_list(200)
+    step_logs = await db.protocol_step_logs.find({"local_date": today_value}, {"_id": 0}).to_list(600)
+    step_taken = {(entry["protocol_id"], entry["step_order"]) for entry in step_logs}
+    for protocol in protocols_docs:
+        if not _dose_matches_day(protocol, weekday):
+            continue
+        member = members_map.get(protocol.get("member_id") or "")
+        owner = f" · {member['name']}" if member else ""
+        interval = int(protocol.get("interval_minutes", 5))
+        for step in protocol.get("steps", []):
+            order = int(step["order"])
+            if (protocol["id"], order) in step_taken:
+                continue
+            step_time = add_minutes_to_time(protocol["start_time"], interval * (order - 1))
+            hour, minute = (int(value) for value in step_time.split(":"))
+            scheduled = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            delta = (now - scheduled).total_seconds() / 60
+            if delta >= 180:
+                items.append(
+                    AttentionItem(
+                        id=f"protocol-missed:{protocol['id']}:{order}:{today_value}",
+                        kind="missed-dose",
+                        title=f"Missed step · {protocol['name']}",
+                        detail=f"Step {order} · {step['medicine_name']} at {step_time}{owner}",
+                        when=scheduled.isoformat(),
+                        protocol_id=protocol["id"],
+                        member_id=protocol.get("member_id"),
+                    )
+                )
+            elif delta >= 15:
+                items.append(
+                    AttentionItem(
+                        id=f"protocol-late:{protocol['id']}:{order}:{today_value}",
+                        kind="late-dose",
+                        title=f"Late step · {protocol['name']}",
+                        detail=f"Step {order} · {step['medicine_name']} at {step_time}{owner}",
+                        when=scheduled.isoformat(),
+                        protocol_id=protocol["id"],
+                        member_id=protocol.get("member_id"),
+                    )
+                )
+
     upcoming_horizon = now + timedelta(hours=48)
     checkups = await db.checkups.find({}, {"_id": 0}).to_list(200)
     for checkup in checkups:

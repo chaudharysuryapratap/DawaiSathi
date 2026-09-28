@@ -7,7 +7,7 @@ import { ErrorState, LoadingState, ScreenShell } from "@/src/components/dawai-ui
 import { useData } from "@/src/data-context";
 import { formatIsoDate, formatTime } from "@/src/dose-status";
 import { makeStyles, useTheme } from "@/src/theme";
-import type { DoseLog } from "@/src/types";
+import type { DoseLog, ProtocolStepLog } from "@/src/types";
 
 const STATUS_FILTERS = ["all", "taken", "missed"] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
@@ -20,14 +20,51 @@ const RANGES = [
 
 type Range = (typeof RANGES)[number]["id"];
 
-function groupByDay(logs: DoseLog[]): [string, DoseLog[]][] {
-  const map = new Map<string, DoseLog[]>();
-  logs.forEach((log) => {
-    const list = map.get(log.local_date) ?? [];
-    list.push(log);
-    map.set(log.local_date, list);
+type DayEntry =
+  | { kind: "dose"; time: string; log: DoseLog }
+  | { kind: "protocol"; time: string; protocolId: string; protocolName: string; steps: ProtocolStepLog[] };
+
+function groupDay(doses: DoseLog[], protocolLogs: ProtocolStepLog[]): [string, DayEntry[]][] {
+  const dayMap = new Map<string, { doses: DoseLog[]; protocolSteps: ProtocolStepLog[] }>();
+  doses.forEach((log) => {
+    const bucket = dayMap.get(log.local_date) ?? { doses: [], protocolSteps: [] };
+    bucket.doses.push(log);
+    dayMap.set(log.local_date, bucket);
   });
-  return Array.from(map.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  protocolLogs.forEach((log) => {
+    const bucket = dayMap.get(log.local_date) ?? { doses: [], protocolSteps: [] };
+    bucket.protocolSteps.push(log);
+    dayMap.set(log.local_date, bucket);
+  });
+  const days: [string, DayEntry[]][] = [];
+  Array.from(dayMap.entries())
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+    .forEach(([date, bucket]) => {
+      const entries: DayEntry[] = bucket.doses.map((log) => ({
+        kind: "dose",
+        time: log.time,
+        log,
+      }));
+      const protocolBuckets = new Map<string, { name: string; steps: ProtocolStepLog[] }>();
+      bucket.protocolSteps.forEach((step) => {
+        const found = protocolBuckets.get(step.protocol_id) ?? { name: step.protocol_name, steps: [] };
+        found.steps.push(step);
+        protocolBuckets.set(step.protocol_id, found);
+      });
+      protocolBuckets.forEach((value, key) => {
+        value.steps.sort((a, b) => (a.step_order < b.step_order ? -1 : 1));
+        entries.push({
+          kind: "protocol",
+          time: value.steps[0]?.time ?? "00:00",
+          protocolId: key,
+          protocolName: value.name,
+          steps: value.steps,
+        });
+      });
+      entries.sort((a, b) => (a.time < b.time ? -1 : 1));
+      days.push([date, entries]);
+    });
+  return days;
 }
 
 export default function HistoryScreen() {
@@ -35,8 +72,10 @@ export default function HistoryScreen() {
   const styles = useStyles();
   const {
     history,
+    protocolHistory,
     todayDoses,
     medicines,
+    protocols,
     members,
     activeMember,
     activeMemberId,
@@ -49,34 +88,56 @@ export default function HistoryScreen() {
   const [medicineFilter, setMedicineFilter] = useState<string | "all">("all");
   const [range, setRange] = useState<Range>("30");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  const filtered = useMemo(() => {
+  const cutoff = useMemo(() => {
     const now = Date.now();
-    let cutoff = 0;
-    if (range === "7") cutoff = now - 7 * 24 * 60 * 60 * 1000;
-    if (range === "30") cutoff = now - 30 * 24 * 60 * 60 * 1000;
-    return history.filter((entry) => {
-      if (cutoff && new Date(entry.logged_at).getTime() < cutoff) return false;
-      if (medicineFilter !== "all" && entry.medicine_id !== medicineFilter) return false;
-      return true;
-    });
-  }, [history, range, medicineFilter]);
+    if (range === "7") return now - 7 * 24 * 60 * 60 * 1000;
+    if (range === "30") return now - 30 * 24 * 60 * 60 * 1000;
+    return 0;
+  }, [range]);
+
+  const filteredDoses = useMemo(
+    () =>
+      history.filter((entry) => {
+        if (cutoff && new Date(entry.logged_at).getTime() < cutoff) return false;
+        if (medicineFilter !== "all" && medicineFilter !== "protocols" && entry.medicine_id !== medicineFilter)
+          return false;
+        if (medicineFilter === "protocols") return false;
+        return true;
+      }),
+    [history, cutoff, medicineFilter],
+  );
+
+  const filteredProtocolLogs = useMemo(
+    () =>
+      protocolHistory.filter((entry) => {
+        if (cutoff && new Date(entry.logged_at).getTime() < cutoff) return false;
+        if (medicineFilter !== "all" && medicineFilter !== "protocols") return false;
+        return true;
+      }),
+    [protocolHistory, cutoff, medicineFilter],
+  );
 
   const missedDoses = useMemo(() => todayDoses.filter((dose) => !dose.logged_at).length, [todayDoses]);
-  const takenDoses = filtered.length;
+  const takenDoses = filteredDoses.length + filteredProtocolLogs.length;
   const totalDoses = takenDoses + missedDoses;
   const adherence = totalDoses ? Math.round((takenDoses / totalDoses) * 100) : 0;
 
-  const visible = useMemo(() => {
-    if (statusFilter === "taken") return filtered;
-    if (statusFilter === "missed") return filtered.filter(() => false);
-    return filtered;
-  }, [filtered, statusFilter]);
+  const grouped = useMemo(() => {
+    if (statusFilter === "missed") return [] as [string, DayEntry[]][];
+    return groupDay(filteredDoses, filteredProtocolLogs);
+  }, [filteredDoses, filteredProtocolLogs, statusFilter]);
 
-  const grouped = useMemo(() => groupByDay(visible), [visible]);
-  const medicineName = medicineFilter === "all" ? "All medicines" : medicines.find((medicine) => medicine.id === medicineFilter)?.name ?? "All medicines";
+  const medicineName =
+    medicineFilter === "all"
+      ? "All items"
+      : medicineFilter === "protocols"
+        ? "Eye-drop protocols"
+        : medicines.find((medicine) => medicine.id === medicineFilter)?.name ?? "All items";
   const memberName = activeMember ? activeMember.name : "Everyone";
   const rangeLabel = RANGES.find((item) => item.id === range)?.label ?? "";
+  const hasProtocols = protocols.length > 0 || protocolHistory.length > 0;
 
   return (
     <ScreenShell testID="history-screen" header={<AppHeader />}>
@@ -127,11 +188,19 @@ export default function HistoryScreen() {
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow} testID="history-medicine-filter">
             <FilterPill
-              label="All medicines"
+              label="All items"
               active={medicineFilter === "all"}
               onPress={() => setMedicineFilter("all")}
               testID="history-filter-medicine-all"
             />
+            {hasProtocols ? (
+              <FilterPill
+                label="Eye-drop protocols"
+                active={medicineFilter === "protocols"}
+                onPress={() => setMedicineFilter("protocols")}
+                testID="history-filter-medicine-protocols"
+              />
+            ) : null}
             {medicines.map((medicine) => (
               <FilterPill
                 key={medicine.id}
@@ -176,20 +245,66 @@ export default function HistoryScreen() {
           ) : (
             grouped.map(([date, entries]) => (
               <View key={date} style={styles.day}>
-                <Text style={styles.dayTitle}>{formatIsoDate(entries[0].logged_at)}</Text>
+                <Text style={styles.dayTitle}>{formatIsoDate(entries[0].kind === "dose" ? entries[0].log.logged_at : entries[0].steps[0].logged_at)}</Text>
                 <View style={styles.dayList}>
-                  {entries.map((entry) => (
-                    <View key={entry.id} style={styles.dayRow}>
-                      <View style={styles.dayCheck}>
-                        <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+                  {entries.map((entry) => {
+                    if (entry.kind === "protocol") {
+                      const key = `${date}-${entry.protocolId}`;
+                      const isOpen = !!expanded[key];
+                      const firstStep = entry.steps[0];
+                      const lastStep = entry.steps[entry.steps.length - 1];
+                      return (
+                        <View key={key}>
+                          <Pressable
+                            testID={`history-protocol-${entry.protocolId}`}
+                            onPress={() => setExpanded((state) => ({ ...state, [key]: !isOpen }))}
+                            style={({ pressed }) => [styles.dayRow, pressed && styles.pressed]}
+                          >
+                            <View style={[styles.dayCheck, { backgroundColor: colors.info }]}>
+                              <Ionicons name="water" size={14} color={colors.onInfo} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.dayMedicine}>{entry.protocolName}</Text>
+                              <Text style={styles.dayMeta}>
+                                ✓ {entry.steps.length}-step protocol · {formatTime(firstStep.time)}–{formatTime(lastStep.time)}
+                              </Text>
+                            </View>
+                            <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={16} color={colors.muted} />
+                          </Pressable>
+                          {isOpen ? (
+                            <View style={styles.stepChildren}>
+                              {entry.steps.map((step) => (
+                                <View key={step.id} style={styles.stepChildRow}>
+                                  <View style={styles.stepChildIndex}>
+                                    <Text style={styles.stepChildIndexText}>{step.step_order}</Text>
+                                  </View>
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={styles.stepChildName}>{step.medicine_name}</Text>
+                                    <Text style={styles.stepChildMeta}>
+                                      {step.dose} · {step.eye === "both" ? "Both eyes" : step.eye === "left" ? "Left eye" : "Right eye"}
+                                    </Text>
+                                  </View>
+                                  <Text style={styles.stepChildTime}>✓ {formatTime(step.time)}</Text>
+                                </View>
+                              ))}
+                            </View>
+                          ) : null}
+                        </View>
+                      );
+                    }
+                    return (
+                      <View key={entry.log.id} style={styles.dayRow}>
+                        <View style={styles.dayCheck}>
+                          <Ionicons name="checkmark" size={13} color={colors.onSuccess} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.dayMedicine}>{entry.log.medicine_name}</Text>
+                          <Text style={styles.dayMeta}>{entry.log.dosage}</Text>
+                        </View>
+                        <Text style={styles.dayTime}>{formatTime(entry.log.time)}</Text>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.dayMedicine}>{entry.medicine_name}</Text>
-                        <Text style={styles.dayMeta}>{entry.dosage}</Text>
-                      </View>
-                      <Text style={styles.dayTime}>{formatTime(entry.time)}</Text>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
               </View>
             ))
@@ -305,6 +420,32 @@ const useStyles = makeStyles((colors) =>
     dayMedicine: { color: colors.onSurface, fontSize: 14, fontWeight: "800" },
     dayMeta: { color: colors.muted, fontSize: 12, marginTop: 2 },
     dayTime: { color: colors.onSurfaceSecondary, fontSize: 12, fontWeight: "700" },
+    stepChildren: {
+      backgroundColor: colors.surface,
+      paddingHorizontal: 14,
+      paddingVertical: 6,
+      gap: 6,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.divider,
+    },
+    stepChildRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 8,
+    },
+    stepChildIndex: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: colors.brandTertiary,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    stepChildIndexText: { color: colors.brandPrimary, fontSize: 11, fontWeight: "800" },
+    stepChildName: { color: colors.onSurface, fontSize: 13, fontWeight: "700" },
+    stepChildMeta: { color: colors.muted, fontSize: 11, marginTop: 1 },
+    stepChildTime: { color: colors.brandPrimary, fontSize: 12, fontWeight: "700" },
     pressed: { opacity: 0.8 },
   }),
 );

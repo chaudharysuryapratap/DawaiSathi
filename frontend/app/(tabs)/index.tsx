@@ -5,6 +5,8 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppHeader } from "@/src/components/app-header";
 import { EmptyMedicineState, ErrorState, LoadingState, ScreenShell } from "@/src/components/dawai-ui";
+import { EyeDropCard } from "@/src/components/eye-drop-card";
+import { EyeDropDetailSheet } from "@/src/components/eye-drop-detail-sheet";
 import { MedicineDetailSheet } from "@/src/components/medicine-detail-sheet";
 import { StatusPill } from "@/src/components/status-pill";
 import { useData } from "@/src/data-context";
@@ -16,28 +18,58 @@ import {
   relativeCheckup,
 } from "@/src/dose-status";
 import { makeStyles, useTheme } from "@/src/theme";
-import type { TimeSlot, TodayDose } from "@/src/types";
+import type { TimeSlot, TodayDose, TodayProtocol } from "@/src/types";
+
+type SlotItem =
+  | { kind: "dose"; time: string; dose: TodayDose }
+  | { kind: "protocol"; time: string; protocol: TodayProtocol };
 
 export default function TodayScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const styles = useStyles();
-  const { todayDoses, medicines, upcomingCheckup, activeMember, loading, error, refresh } = useData();
+  const {
+    todayDoses,
+    todayProtocols,
+    medicines,
+    protocols,
+    upcomingCheckup,
+    activeMember,
+    loading,
+    error,
+    refresh,
+  } = useData();
   const [selectedDose, setSelectedDose] = useState<TodayDose | null>(null);
+  const [selectedProtocol, setSelectedProtocol] = useState<TodayProtocol | null>(null);
 
-  const taken = todayDoses.filter((dose) => dose.logged_at).length;
-  const total = todayDoses.length;
+  const totalDoses = todayDoses.length;
+  const takenDoses = todayDoses.filter((dose) => dose.logged_at).length;
+  const totalProtocolSteps = todayProtocols.reduce((acc, protocol) => acc + protocol.steps.length, 0);
+  const takenProtocolSteps = todayProtocols.reduce(
+    (acc, protocol) => acc + protocol.steps.filter((step) => step.logged_at).length,
+    0,
+  );
+  const total = totalDoses + totalProtocolSteps;
+  const taken = takenDoses + takenProtocolSteps;
   const percent = total ? Math.round((taken / total) * 100) : 0;
 
   const grouped = useMemo(() => {
-    const map = new Map<TimeSlot, TodayDose[]>();
+    const map = new Map<TimeSlot, SlotItem[]>();
     todayDoses.forEach((dose) => {
       const list = map.get(dose.time_slot) ?? [];
-      list.push(dose);
+      list.push({ kind: "dose", time: dose.time, dose });
       map.set(dose.time_slot, list);
     });
+    todayProtocols.forEach((protocol) => {
+      const list = map.get(protocol.time_slot) ?? [];
+      list.push({ kind: "protocol", time: protocol.start_time, protocol });
+      map.set(protocol.time_slot, list);
+    });
+    map.forEach((list) => list.sort((a, b) => (a.time < b.time ? -1 : 1)));
     return map;
-  }, [todayDoses]);
+  }, [todayDoses, todayProtocols]);
+
+  const nothingToShow = medicines.length === 0 && protocols.length === 0;
 
   return (
     <ScreenShell testID="today-screen" header={<AppHeader />}>
@@ -45,7 +77,7 @@ export default function TodayScreen() {
         <LoadingState label="Loading today’s doses" />
       ) : error ? (
         <ErrorState message={error} onRetry={refresh} />
-      ) : medicines.length === 0 ? (
+      ) : nothingToShow ? (
         <EmptyMedicineState onPress={() => router.push("/add-medicine")} />
       ) : (
         <>
@@ -75,7 +107,7 @@ export default function TodayScreen() {
           <View style={styles.progressWrap}>
             <View style={styles.progressText}>
               <Text style={styles.progressPrimary}>
-                {taken} / {total} doses taken · {percent}%
+                {taken} / {total} taken · {percent}%
               </Text>
               <Text style={styles.progressSecondary}>{activeMember ? `Today for ${activeMember.name}` : "Today’s progress"}</Text>
             </View>
@@ -87,7 +119,7 @@ export default function TodayScreen() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Today’s Doses</Text>
             <Text style={styles.sectionMeta}>
-              {total} {total === 1 ? "dose" : "doses"}
+              {total} {total === 1 ? "item" : "items"}
             </Text>
           </View>
 
@@ -98,22 +130,33 @@ export default function TodayScreen() {
             </View>
           ) : (
             TIME_SLOTS.map((slot) => {
-              const doses = grouped.get(slot);
-              if (!doses || doses.length === 0) return null;
-              const slotTime = doses[0].time;
+              const items = grouped.get(slot);
+              if (!items || items.length === 0) return null;
+              const slotTime = items[0].time;
               return (
                 <View key={slot} style={styles.slotBlock}>
                   <View style={styles.slotHeader}>
                     <View>
                       <Text style={styles.slotTitle}>{TIME_SLOT_LABEL[slot]}</Text>
                       <Text style={styles.slotMeta}>
-                        {doses.length} {doses.length === 1 ? "medicine" : "medicines"}
+                        {items.length} {items.length === 1 ? "item" : "items"}
                       </Text>
                     </View>
                     <Text style={styles.slotTime}>{formatTime(slotTime)}</Text>
                   </View>
                   <View style={styles.slotList}>
-                    {doses.map((dose) => {
+                    {items.map((item) => {
+                      if (item.kind === "protocol") {
+                        return (
+                          <EyeDropCard
+                            key={`protocol-${item.protocol.protocol_id}`}
+                            protocol={item.protocol}
+                            onPress={() => setSelectedProtocol(item.protocol)}
+                            testID={`protocol-card-${item.protocol.protocol_id}`}
+                          />
+                        );
+                      }
+                      const dose = item.dose;
                       const status = computeDoseStatus(dose.time, dose.logged_at);
                       return (
                         <Pressable
@@ -151,6 +194,15 @@ export default function TodayScreen() {
         visible={selectedDose !== null}
         onClose={() => setSelectedDose(null)}
         dose={selectedDose}
+      />
+      <EyeDropDetailSheet
+        visible={selectedProtocol !== null}
+        onClose={() => setSelectedProtocol(null)}
+        protocol={
+          selectedProtocol
+            ? todayProtocols.find((item) => item.protocol_id === selectedProtocol.protocol_id) ?? selectedProtocol
+            : null
+        }
       />
     </ScreenShell>
   );

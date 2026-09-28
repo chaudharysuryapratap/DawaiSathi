@@ -110,6 +110,7 @@ export type AttentionItem = {
   when: string;
   medicine_id?: string | null;
   checkup_id?: string | null;
+  protocol_id?: string | null;
   member_id?: string | null;
 };
 
@@ -122,3 +123,88 @@ export type NotificationPreference = {
   whatsapp_linked: boolean;
   telegram_linked: boolean;
 };
+
+// ---------------------------------------------------------------------------
+// Staggered eye-drop protocols
+// ---------------------------------------------------------------------------
+
+export type EyeTarget = "left" | "right" | "both";
+
+export type EyeDropStep = {
+  order: number;
+  medicine_name: string;
+  dose: string;
+  eye: EyeTarget;
+};
+
+export type EyeDropStepInput = {
+  medicine_name: string;
+  dose: string;
+  eye: EyeTarget;
+};
+
+export type EyeDropProtocol = {
+  id: string;
+  name: string;
+  start_time: string;
+  interval_minutes: number;
+  steps: EyeDropStep[];
+  member_id: string | null;
+  days: number[];
+  active: boolean;
+  created_at: string;
+};
+
+export type EyeDropProtocolInput = {
+  name: string;
+  start_time: string;
+  interval_minutes: number;
+  steps: EyeDropStepInput[];
+  member_id?: string | null;
+  days?: number[];
+};
+
+export type TodayProtocolStep = {
+  order: number;
+  medicine_name: string;
+  dose: string;
+  eye: EyeTarget;
+  time: string;
+  logged_at: string | null;
+  log_id: string | null;
+};
+
+export type TodayProtocol = {
+  protocol_id: string;
+  name: string;
+  start_time: string;
+  end_time: string;
+  interval_minutes: number;
+  time_slot: TimeSlot;
+  member_id: string | null;
+  member_name: string;
+  steps: TodayProtocolStep[];
+};
+
+export type ProtocolStepLog = {
+  id: string;
+  protocol_id: string;
+  protocol_name: string;
+  step_order: number;
+  medicine_name: string;
+  dose: string;
+  eye: EyeTarget;
+  time: string;
+  logged_at: string;
+  local_date: string;
+  member_id: string | null;
+};
+
+export type ProtocolStatus =
+  | "upcoming"
+  | "ready"
+  | "in-progress"
+  | "completed"
+  | "partially-completed"
+  | "late"
+  | "missed";

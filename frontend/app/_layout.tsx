@@ -21,6 +21,7 @@ export default function RootLayout() {
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="care" />
                 <Stack.Screen name="add-medicine" options={{ presentation: "modal" }} />
+                <Stack.Screen name="add-eye-drop-protocol" options={{ presentation: "modal" }} />
                 <Stack.Screen name="add-checkup" options={{ presentation: "modal" }} />
               </Stack>
             </DataProvider>

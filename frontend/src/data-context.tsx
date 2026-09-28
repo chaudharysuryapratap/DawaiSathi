@@ -13,10 +13,14 @@ import type {
   Checkup,
   CheckupInput,
   DoseLog,
+  EyeDropProtocol,
+  EyeDropProtocolInput,
   Medicine,
   MedicineInput,
   Member,
+  ProtocolStepLog,
   TodayDose,
+  TodayProtocol,
 } from "./types";
 import { storage } from "./utils/storage";
 
@@ -30,8 +34,11 @@ type DataContextValue = {
   medicines: Medicine[];
   activeMedicines: Medicine[];
   archivedMedicines: Medicine[];
+  protocols: EyeDropProtocol[];
   todayDoses: TodayDose[];
+  todayProtocols: TodayProtocol[];
   history: DoseLog[];
+  protocolHistory: ProtocolStepLog[];
   checkups: Checkup[];
   upcomingCheckup: Checkup | null;
   attention: AttentionItem[];
@@ -48,6 +55,11 @@ type DataContextValue = {
   refillMedicine: (id: string, quantity: number) => Promise<void>;
   logDose: (id: string, time: string) => Promise<void>;
   undoDose: (id: string, time: string, date?: string) => Promise<void>;
+  addProtocol: (input: EyeDropProtocolInput) => Promise<EyeDropProtocol>;
+  updateProtocol: (id: string, input: Partial<EyeDropProtocolInput> & { active?: boolean }) => Promise<void>;
+  archiveProtocol: (id: string) => Promise<void>;
+  logProtocolStep: (id: string, order: number) => Promise<void>;
+  undoProtocolStep: (id: string, order: number, date?: string) => Promise<void>;
   addCheckup: (input: CheckupInput) => Promise<Checkup>;
   updateCheckup: (id: string, input: Partial<CheckupInput>) => Promise<void>;
   removeCheckup: (id: string) => Promise<void>;
@@ -60,8 +72,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [activeMemberId, setActiveMemberIdState] = useState<string | null>(null);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [archivedMedicines, setArchivedMedicines] = useState<Medicine[]>([]);
+  const [protocols, setProtocols] = useState<EyeDropProtocol[]>([]);
   const [todayDoses, setTodayDoses] = useState<TodayDose[]>([]);
+  const [todayProtocols, setTodayProtocols] = useState<TodayProtocol[]>([]);
   const [history, setHistory] = useState<DoseLog[]>([]);
+  const [protocolHistory, setProtocolHistory] = useState<ProtocolStepLog[]>([]);
   const [checkups, setCheckups] = useState<Checkup[]>([]);
   const [upcomingCheckup, setUpcomingCheckup] = useState<Checkup | null>(null);
   const [attention, setAttention] = useState<AttentionItem[]>([]);
@@ -77,10 +92,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       const stored = await storage.getItem<string | null>(ACTIVE_MEMBER_KEY, null);
-      const [memberList, everyMedicine, activeMedicineList, checkupList, attentionData] = await Promise.all([
+      const [memberList, everyMedicine, activeMedicineList, protocolList, checkupList, attentionData] = await Promise.all([
         api.members(),
         api.medicines(undefined, false),
         api.medicines(undefined, true),
+        api.protocols(undefined, true),
         api.checkups(),
         api.attention(),
       ]);
@@ -94,15 +110,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }
       setMedicines(activeMedicineList);
       setArchivedMedicines(everyMedicine.filter((medicine) => !medicine.active));
+      setProtocols(protocolList);
       setCheckups(checkupList);
       setAttention(attentionData.items);
-      const [todayData, historyData, upcoming] = await Promise.all([
+      const [todayData, historyData, protocolHistoryData, upcoming] = await Promise.all([
         api.today(activeId),
         api.history({ memberId: activeId }),
+        api.protocolHistory({ memberId: activeId }),
         api.upcomingCheckup(activeId),
       ]);
       setTodayDoses(todayData.doses);
+      setTodayProtocols(todayData.protocols ?? []);
       setHistory(historyData);
+      setProtocolHistory(protocolHistoryData);
       setUpcomingCheckup(upcoming);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to load DawaiSathi.");
@@ -120,14 +140,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const [todayData, historyData, upcoming] = await Promise.all([
+        const [todayData, historyData, protocolHistoryData, upcoming] = await Promise.all([
           api.today(activeMemberId),
           api.history({ memberId: activeMemberId }),
+          api.protocolHistory({ memberId: activeMemberId }),
           api.upcomingCheckup(activeMemberId),
         ]);
         if (cancelled) return;
         setTodayDoses(todayData.doses);
+        setTodayProtocols(todayData.protocols ?? []);
         setHistory(historyData);
+        setProtocolHistory(protocolHistoryData);
         setUpcomingCheckup(upcoming);
       } catch {
         // silent: keep whatever previously loaded
@@ -157,8 +180,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       medicines,
       activeMedicines: medicines,
       archivedMedicines,
+      protocols,
       todayDoses,
+      todayProtocols,
       history,
+      protocolHistory,
       checkups,
       upcomingCheckup,
       attention,
@@ -191,6 +217,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       undoDose: async (id, time, date) => {
         await runAndRefresh(() => api.undoDose(id, time, date));
       },
+      addProtocol: (input) => runAndRefresh(() => api.createProtocol(input)),
+      updateProtocol: async (id, input) => {
+        await runAndRefresh(() => api.updateProtocol(id, input));
+      },
+      archiveProtocol: async (id) => {
+        await runAndRefresh(() => api.archiveProtocol(id));
+      },
+      logProtocolStep: async (id, order) => {
+        await runAndRefresh(() => api.logProtocolStep(id, order));
+      },
+      undoProtocolStep: async (id, order, date) => {
+        await runAndRefresh(() => api.undoProtocolStep(id, order, date));
+      },
       addCheckup: (input) => runAndRefresh(() => api.createCheckup(input)),
       updateCheckup: async (id, input) => {
         await runAndRefresh(() => api.updateCheckup(id, input));
@@ -205,8 +244,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setActiveMember,
     medicines,
     archivedMedicines,
+    protocols,
     todayDoses,
+    todayProtocols,
     history,
+    protocolHistory,
     checkups,
     upcomingCheckup,
     attention,

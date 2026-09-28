@@ -15,6 +15,7 @@ type AddOption = {
 
 const OPTIONS: AddOption[] = [
   { id: "add-medicine", title: "Add medicine", description: "Set a new dose and reminder schedule", icon: "medical-outline", route: "/add-medicine" },
+  { id: "staggered-eye-drops", title: "Staggered eye drops", description: "Set up an eye-drop protocol with timed steps", icon: "water-outline", route: "/add-eye-drop-protocol" },
   { id: "scan-prescription", title: "Scan prescription", description: "Use the camera to capture a script", icon: "scan-outline", route: "/care/prescription?mode=scan" },
   { id: "upload-prescription", title: "Upload prescription", description: "Choose an image or PDF from your device", icon: "cloud-upload-outline", route: "/care/prescription?mode=upload" },
   { id: "add-checkup", title: "Add checkup", description: "Log a doctor visit or lab appointment", icon: "calendar-outline", route: "/add-checkup" },

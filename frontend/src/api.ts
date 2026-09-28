@@ -5,11 +5,15 @@ import type {
   Checkup,
   CheckupInput,
   DoseLog,
+  EyeDropProtocol,
+  EyeDropProtocolInput,
   Medicine,
   MedicineInput,
   Member,
   NotificationPreference,
+  ProtocolStepLog,
   TodayDose,
+  TodayProtocol,
 } from "./types";
 
 type ExpoConfig = { extra?: { backendUrl?: string } };
@@ -66,7 +70,9 @@ export const api = {
     request<Medicine>(`/medicines/${id}/refill${query({ quantity })}`, { method: "POST" }),
 
   today: (memberId?: string | null) =>
-    request<{ date: string; doses: TodayDose[] }>(`/today${query({ member_id: memberId ?? null })}`),
+    request<{ date: string; doses: TodayDose[]; protocols: TodayProtocol[] }>(
+      `/today${query({ member_id: memberId ?? null })}`,
+    ),
   logDose: (id: string, time: string) =>
     request<DoseLog>(`/medicines/${id}/dose`, {
       method: "POST",
@@ -83,6 +89,49 @@ export const api = {
         limit: filters.limit ?? 200,
         member_id: filters.memberId ?? null,
         medicine_id: filters.medicineId ?? null,
+        date: filters.date ?? null,
+      })}`,
+    ),
+
+  protocols: (memberId?: string | null, activeOnly = true) =>
+    request<EyeDropProtocol[]>(
+      `/eye-drop-protocols${query({
+        member_id: memberId ?? null,
+        active_only: activeOnly ? "true" : "false",
+      })}`,
+    ),
+  createProtocol: (input: EyeDropProtocolInput) =>
+    request<EyeDropProtocol>("/eye-drop-protocols", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateProtocol: (id: string, input: Partial<EyeDropProtocolInput> & { active?: boolean }) =>
+    request<EyeDropProtocol>(`/eye-drop-protocols/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  archiveProtocol: (id: string) =>
+    request<{ ok: boolean }>(`/eye-drop-protocols/${id}`, { method: "DELETE" }),
+  logProtocolStep: (id: string, order: number) =>
+    request<ProtocolStepLog>(`/eye-drop-protocols/${id}/step/${order}/log`, {
+      method: "POST",
+    }),
+  undoProtocolStep: (id: string, order: number, date?: string) =>
+    request<{ ok: boolean }>(
+      `/eye-drop-protocols/${id}/step/${order}/log${query({ date: date ?? null })}`,
+      { method: "DELETE" },
+    ),
+  protocolHistory: (filters: {
+    memberId?: string | null;
+    protocolId?: string | null;
+    date?: string | null;
+    limit?: number;
+  } = {}) =>
+    request<ProtocolStepLog[]>(
+      `/eye-drop-protocols/history${query({
+        limit: filters.limit ?? 200,
+        member_id: filters.memberId ?? null,
+        protocol_id: filters.protocolId ?? null,
         date: filters.date ?? null,
       })}`,
     ),
