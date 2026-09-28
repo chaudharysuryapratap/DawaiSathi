@@ -17,9 +17,6 @@ export function FamilyGroupSelector() {
     setActiveFamilyGroup,
     createFamilyGroup,
     renameFamilyGroup,
-    members,
-    activeMember,
-    setActiveMember,
   } = useData();
   const [open, setOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -61,18 +58,17 @@ export function FamilyGroupSelector() {
   };
 
   const label = activeFamilyGroup?.name ?? "Create family group";
+  const familyLabel = label === "Create family group" ? label : label + "'s family";
 
   return (
     <>
       <Pressable
         testID="family-group-selector"
-        accessibilityLabel={`Active family group ${label}`}
+        accessibilityLabel={`Switch family group, currently ${familyLabel}`}
         onPress={() => setOpen(true)}
         style={({ pressed }) => [styles.selector, pressed && styles.pressed]}
       >
-        <View style={styles.dot} />
-        <Text style={styles.selectorLabel} numberOfLines={1}>{label}</Text>
-        <Ionicons name="chevron-down" size={18} color={colors.onSurfaceSecondary} />
+        <Text style={styles.selectorLabel} numberOfLines={1}>{familyLabel}</Text>
       </Pressable>
 
       <BottomSheet
@@ -154,33 +150,6 @@ export function FamilyGroupSelector() {
         </ScrollView>
 
 
-        <Text style={styles.sectionLabel}>PEOPLE IN THIS GROUP</Text>
-        <View style={styles.memberList}>
-          {members.map((member) => {
-            const selected = member.id === activeMember?.id;
-            return (
-              <Pressable
-                key={member.id}
-                testID={`family-member-${member.id}`}
-                onPress={() => {
-                  setActiveMember(member.id);
-                  setOpen(false);
-                }}
-                style={({ pressed }) => [styles.memberRow, pressed && styles.pressed]}
-              >
-                <View style={[styles.avatar, { backgroundColor: member.color }]}>
-                  <Text style={styles.avatarLetter}>{member.name.slice(0, 1).toUpperCase()}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.name}>{member.name}</Text>
-                  <Text style={styles.detail}>{member.is_primary ? "Primary member" : member.role || "Member"}</Text>
-                </View>
-                {selected ? <Ionicons name="checkmark-circle" size={21} color={colors.brandPrimary} /> : null}
-              </Pressable>
-            );
-          })}
-        </View>
-
         <View style={styles.createCard}>
           <Text style={styles.createTitle}>Write your family group name</Text>
           <TextInput
@@ -205,16 +174,10 @@ const useStyles = makeStyles((colors) =>
     selector: {
       alignSelf: "flex-start",
       maxWidth: "100%",
-      minHeight: 46,
-      paddingHorizontal: 14,
-      borderRadius: 999,
-      backgroundColor: colors.brandTertiary,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
+      paddingVertical: 4,
+      paddingHorizontal: 0,
     },
-    dot: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.brandPrimary },
-    selectorLabel: { color: colors.brandPrimary, fontSize: 14, fontWeight: "700", maxWidth: 220 },
+    selectorLabel: { color: colors.onSurface, fontSize: 20, fontWeight: "850", letterSpacing: -0.3, maxWidth: 280 },
     list: { gap: 8 },
     row: { flexDirection: "row", alignItems: "center", gap: 8 },
     rowMain: {
@@ -254,19 +217,6 @@ const useStyles = makeStyles((colors) =>
       borderBottomColor: colors.brandSecondary,
       paddingVertical: 3,
     },
-    sectionLabel: { color: colors.muted, fontSize: 10, fontWeight: "800", letterSpacing: 1, marginTop: 2 },
-    memberList: { gap: 8 },
-    memberRow: {
-      minHeight: 58,
-      borderRadius: 16,
-      paddingHorizontal: 12,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      backgroundColor: colors.surfaceSecondary,
-    },
-    avatar: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
-    avatarLetter: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" },
     createCard: {
       borderRadius: 18,
       backgroundColor: colors.surfaceSecondary,
