@@ -254,9 +254,9 @@ const useStyles = makeStyles((colors) =>
       paddingHorizontal: 12,
       paddingVertical: 10,
       borderRadius: 12,
-      backgroundColor: "#E4ECF2",
+      backgroundColor: colors.infoTint,
     },
-    lockedText: { color: "#345169", fontSize: 13, fontWeight: "700" },
+    lockedText: { color: colors.onInfoTint, fontSize: 13, fontWeight: "700" },
     secondaryRow: { flexDirection: "row", gap: 10 },
     secondaryButton: {
       flex: 1,

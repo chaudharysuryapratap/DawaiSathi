@@ -34,6 +34,12 @@ Global actions available above the tabs:
 
 ## Implemented
 
+### 2026-09-28 — Solid teal green palette + cleaner surfaces
+- Retuned `src/theme.ts` to a solid teal green identity (brand `#0F766E`, secondary `#14B8A6`, tertiary `#D6F1EC`) with softer teal-tinted surfaces (`#FBFDFC` canvas, `#F1F6F4` cards, `#EAF1EE` dividers) and a calmer muted (`#7C8E8B`).
+- Added `infoTint` / `onInfoTint` tokens to keep semantic info banners (Upcoming checkup card, Locked dose banner) neutrally blue instead of clashing with the brand.
+- Removed the two remaining hardcoded hex fills (`#E1EAF4` upcoming-checkup icon in Today, `#E4ECF2` locked banner in medicine detail sheet) — both now read from the theme.
+- Semantic status pills (Locked/Late/Missed/Taken) stay unchanged to preserve status legibility.
+
 ### 2026-09-28 — DawaiSathi architectural redesign
 - Restructured navigation to Today / Care / History / Settings with a global Attention Center bell and global + FAB.
 - Added members, checkups, refill, undo dose, attention aggregation, and notification preferences to the backend.

@@ -171,7 +171,7 @@ const useStyles = makeStyles((colors) =>
       width: 44,
       height: 44,
       borderRadius: 14,
-      backgroundColor: "#E1EAF4",
+      backgroundColor: colors.infoTint,
       alignItems: "center",
       justifyContent: "center",
     },

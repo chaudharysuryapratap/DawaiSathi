@@ -39,29 +39,29 @@ const light = {
   // ---------------------------------------------------------------------------
   // Surfaces: backgrounds, from the screen down to small fills.
   // Each `on` key is the text and icon color for that background.
+  // Softer, higher-whitespace palette for a calm, simple feel.
   // ---------------------------------------------------------------------------
-  surface: "#FDFCFA", // primary canvas, most of every screen
-  onSurface: "#1C1C1E", // text and icons on the canvas
-  surfaceSecondary: "#F5F5F0", // cards, sheets, list rows
-  onSurfaceSecondary: "#3A3A3C", // text and icons on cards, sheets, rows
-  surfaceTertiary: "#EAEAE0", // input backgrounds, chips, deepest nesting
-  onSurfaceTertiary: "#636366", // text on inputs and chips; also muted text
-  surfaceInverse: "#1C1C1E", // tooltips, snackbars, anything popping against the theme
-  onSurfaceInverse: "#FDFCFA", // text and icons on the inverse surface
-  muted: "#8E8E93", // subdued text on surface: captions, timestamps, placeholders
+  surface: "#FBFDFC", // primary canvas, most of every screen
+  onSurface: "#0F1B1A", // text and icons on the canvas
+  surfaceSecondary: "#F1F6F4", // cards, sheets, list rows
+  onSurfaceSecondary: "#334744", // text and icons on cards, sheets, rows
+  surfaceTertiary: "#E4EEEB", // input backgrounds, chips, deepest nesting
+  onSurfaceTertiary: "#5E7370", // text on inputs and chips; also muted text
+  surfaceInverse: "#0F1B1A", // tooltips, snackbars, anything popping against the theme
+  onSurfaceInverse: "#FBFDFC", // text and icons on the inverse surface
+  muted: "#7C8E8B", // subdued text on surface: captions, timestamps, placeholders
 
   // ---------------------------------------------------------------------------
-  // Brand: the identity color and the fills built from it.
-  // Neutral by default; replace with the design guidelines values.
+  // Brand: solid teal green identity, single hue with 3 weights.
   // ---------------------------------------------------------------------------
-  brand: "#3B7A57", // base hue, anchor only; Primary, Secondary, Tertiary are weights of it
+  brand: "#0F766E", // base hue, anchor only; Primary, Secondary, Tertiary are weights of it
   onBrand: "#FFFFFF", // text and icons placed directly on brand
-  brandPrimary: "#3B7A57", // primary CTA, active tab indicator, selected states
+  brandPrimary: "#0F766E", // primary CTA, active tab indicator, selected states
   onBrandPrimary: "#FFFFFF", // text and icons on brandPrimary
-  brandSecondary: "#5B9A77", // secondary CTA, less prominent accents
+  brandSecondary: "#14B8A6", // secondary CTA, less prominent accents
   onBrandSecondary: "#FFFFFF", // text and icons on brandSecondary
-  brandTertiary: "#E6F0EC", // chips, tags, badges, subtle brand moments
-  onBrandTertiary: "#1C1C1E", // text and icons on brandTertiary
+  brandTertiary: "#D6F1EC", // chips, tags, badges, subtle brand moments
+  onBrandTertiary: "#0F766E", // text and icons on brandTertiary
 
   // ---------------------------------------------------------------------------
   // Status: semantic only, never decorative. Fill for badges, banners and
@@ -76,13 +76,15 @@ const light = {
   onError: "#FFFFFF",
   info: "#2B6CB0",
   onInfo: "#FFFFFF",
+  infoTint: "#E4ECF2", // subtle info background: locked banners, info chips
+  onInfoTint: "#345169", // text on infoTint
 
   // ---------------------------------------------------------------------------
   // Lines
   // ---------------------------------------------------------------------------
-  border: "#E5E5EA", // hairline outline, 0.5pt or 1pt max: inputs, cards
-  borderStrong: "#C7C7CC", // focus rings, selected outlines, 1.5pt max
-  divider: "#EFEFF4", // subtle list separators
+  border: "#E1EAE7", // hairline outline, 0.5pt or 1pt max: inputs, cards
+  borderStrong: "#B8C8C4", // focus rings, selected outlines, 1.5pt max
+  divider: "#EAF1EE", // subtle list separators
 };
 
 export type ThemeColors = typeof light;
