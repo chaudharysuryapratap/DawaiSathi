@@ -1,0 +1,57 @@
+{
+  "summary": "Full regression at 390x844 for the redesigned DawaiSathi. Backend: 10/10 pytest tests pass covering members CRUD with primary seeding, medicines CRUD (member/days/identification/refill/archive/restore), today endpoint (member + shared), dose log/undo, checkups CRUD, attention aggregation (refill kind verified), and notification preferences GET/PUT. Frontend: bottom nav shows exactly Today/Care/History/Settings; header bell opens Attention Center; global + opens Add sheet with Add medicine / Scan prescription / Upload prescription / Add checkup; member selector chip opens sheet with switch/add/edit/remove; Today shows compact progress bar, doses grouped by Morning/Afternoon/Evening/Night with status pills (Taken/Locked/Upcoming); tapping a dose row opens the medicine detail bottom sheet with Mark-as-Taken/Undo, Edit, Delete; Care hub navigates to family, medicines (search + Active/Archived + Refill), calendar (month grid + dots + selected-day list), checkups, prescription (Scan/Upload + AI review steps), family-management; History has adherence card + horizontal-scroll filters (member/medicine/date-range/status) with no wrapping; Settings shows Account/Notifications/Integrations/Family/About groups with working toggles. No horizontal overflow detected (scrollWidth==innerWidth==390). Safe-area insets used correctly on modal screens (add-medicine, add-checkup, care/*). No deprecated Expo packages found. Only console warning is a non-blocking \"shadow* style props are deprecated\" from RNW.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_dawaisathi_regression.py",
+    "/app/test_reports/pytest/pytest_results_iteration3.xml",
+    "/app/test_reports/ui/today_it3.png",
+    "/app/test_reports/ui/attention_it3.png",
+    "/app/test_reports/ui/addsheet_it3.png",
+    "/app/test_reports/ui/memsel_it3.png",
+    "/app/test_reports/ui/care_full_it3.png",
+    "/app/test_reports/ui/care_meds_it3.png",
+    "/app/test_reports/ui/care_cal_it3.png",
+    "/app/test_reports/ui/care_check_it3.png",
+    "/app/test_reports/ui/care_presc_it3.png",
+    "/app/test_reports/ui/care_fmgmt_it3.png",
+    "/app/test_reports/ui/history_it3.png",
+    "/app/test_reports/ui/settings_it3.png",
+    "/app/test_reports/ui/add_med_it3.png",
+    "/app/test_reports/ui/med_detail_it3.png"
+  ],
+  "action_items": [
+    "Optional polish: RNW warns 'shadow* style props are deprecated; use boxShadow' — non-blocking on native, but consider migrating web shadow styles.",
+    "Optional: expose EXPO_BACKEND_URL in shell/CI so /app/backend/tests can run without manually exporting it."
+  ],
+  "critical_code_review_comments": [
+    "server.py cleanly excludes MongoDB _id via projections in every read; models use uuid ids.",
+    "Today endpoint properly returns member-scoped + shared (member_id=null) medicines using $or query.",
+    "log_dose is idempotent (returns existing log if a matching (medicine, time, date) exists) — safe against double taps.",
+    "Attention aggregator handles missed/late/refill/upcoming-checkup with correct thresholds (15/180 min, 48h horizon).",
+    "Member primary seeding runs on startup and defensively re-runs from list_members.",
+    "Frontend uses testID on core interactive elements (attention-button, global-add-button, member-selector, dose-row-*, dose-status-*, today-screen, today-upcoming-checkup)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_dawaisathi_regression.py",
+    "/app/test_reports/iteration_3.json",
+    "/app/test_reports/pytest/pytest_results_iteration3.xml"
+  ],
+  "success_rate": {
+    "backend": "100% (10/10)",
+    "frontend": "100% for executed 390x844 mobile regression"
+  },
+  "seed_data_creation": "All backend tests create TEST_-prefixed members/medicines/checkups and self-clean via finally blocks; no residue expected. Legacy Cetirizine + previously-created TEST_UI_* medicines from earlier iterations remain in the preview DB (expected per handoff notes).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Full backend suite lives at /app/backend/tests/test_dawaisathi_regression.py; requires EXPO_BACKEND_URL exported (frontend/.env has EXPO_PUBLIC_BACKEND_URL=https://smooth-ui-3.preview.emergentagent.com). All redesign features (four tabs, bell/attention, global +, member selector, Today grouping, medicine detail sheet, Care hub subroutes, History filters chip row, Settings groups) verified visually and functionally.",
+  "rca_of_issue": "No blocking issues encountered."
+}

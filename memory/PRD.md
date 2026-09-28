@@ -1,54 +1,68 @@
 # DawaiSathi Product Requirements
 
 ## Problem statement
-Build a mobile app: “I want to make this apps interface smooth and more simpler.” DawaiSathi is a medicine reminder app that reminds users to take medicines based on times set in the app.
+Build a mobile app: “I want to make this apps interface smooth and more simpler.” DawaiSathi is a medicine reminder app that reminds users to take medicines based on times set in the app. The user then asked for a full redesign around four tabs, a global Attention Center bell, and a global add action, while preserving existing functionality.
 
 ## Architecture
-- Expo SDK 57 React Native frontend with Expo Router bottom tabs.
-- FastAPI backend bound through the configured backend URL with `/api` routes.
-- MongoDB stores active medicines and dose logs; all API responses use string IDs and Pydantic models without MongoDB `_id` leakage.
-- Light, minimal UI uses the shared token system in `frontend/src/theme.ts` and safe-area insets.
 
-## User personas
-- A patient who wants a low-effort daily medicine schedule.
-- A caregiver who needs a quick view of medicines, dose completion, and history.
+### Bottom navigation
+- **Today** – What do I need to do today?
+- **Care** – What am I managing?
+- **History** – What happened?
+- **Settings** – How is the app configured?
 
-## Core requirements (static)
-- View today’s medicine schedule and completion progress.
-- Add and edit medicine name, dosage, frequency, reminder times, quantity, and instructions.
-- Mark a scheduled dose as taken.
-- Browse/search active medicines and archive medicines.
-- Review logged dose history with time filters.
-- Keep reminder and sound preferences easy to find.
-- Use a bright, calm interface with simple navigation, large touch targets, clear states, and preserved current color direction.
+Global actions available above the tabs:
+- Notification bell → Attention Center bottom sheet
+- Plus button → Add sheet (Add medicine, Scan prescription, Upload prescription, Add checkup)
+
+### Layers
+- **Level 1 – Glance:** Today row shows medicine, dosage, instruction, time, status pill.
+- **Level 2 – Understand:** Medicine detail bottom sheet with schedule, current status, dose history, next dose, contextual actions.
+- **Level 3 – Manage:** Care sub-pages for members, medicine library, calendar, checkups, prescription flow, family management.
+
+## Backend
+- FastAPI + MongoDB.
+- Endpoints: `/api/members`, `/api/medicines`, `/api/today`, `/api/medicines/{id}/dose`, `/api/doses/history`, `/api/medicines/{id}/refill`, `/api/medicines/{id}/restore`, `/api/checkups`, `/api/upcoming-checkup`, `/api/attention`, `/api/notifications/preferences`.
+- Auto-seeds a primary member on startup and prevents its removal.
+- `today` merges medicines assigned to the selected member with shared medicines (no member).
+- `attention` aggregates missed doses, late doses, low-stock refills, and upcoming checkups.
+
+## Frontend
+- Expo Router + React Native with the shared theme in `frontend/src/theme.ts`.
+- Shared components: `AppHeader`, `AttentionCenter`, `AddSheet`, `MemberSelector`, `BottomSheet`, `MedicineDetailSheet`, `StatusPill`, `ScreenShell`.
+- Data flows through `DataProvider` with persistent active-member selection in local storage.
 
 ## Implemented
 
-### 2026-09-23 — Simplified DawaiSathi MVP
-- Replaced the starter image screen with Today, Medicines, History, Settings, and Add/Edit Medicine flows.
-- Added live FastAPI/MongoDB medicine CRUD, today schedule generation, dose logging, quantity decrement, and history endpoints.
-- Added empty, loading, error, validation, search, progress, and success states with safe-area-aware mobile layouts.
-- Added API environment fallback support for `EXPO_BACKEND_URL` and the configured `EXPO_PUBLIC_BACKEND_URL`.
-- Added accessibility/test selectors for history filters and settings switches.
-- Verified with live curl CRUD/dose flows, lint, and mobile regression testing at 390x844.
+### 2026-09-28 — DawaiSathi architectural redesign
+- Restructured navigation to Today / Care / History / Settings with a global Attention Center bell and global + FAB.
+- Added members, checkups, refill, undo dose, attention aggregation, and notification preferences to the backend.
+- Rebuilt Today with member selector, upcoming checkup card (only when relevant), compact progress bar, and doses grouped by Morning / Afternoon / Evening / Night with status pills and detail bottom sheet.
+- Added Care hub with Family (members), Care tools (Medicines, Schedule, Prescription), and Family management sections.
+- Added Care sub-routes for family, medicine library (search + Active/Archived + Refill), calendar (month grid with dots + selected-day list), checkups (upcoming/past), prescription workflow (scan/upload + AI review steps), and family-management.
+- Rebuilt History with adherence card and horizontal-scroll filter chips (member, medicine, date-range, status).
+- Reorganised Settings into Account / Notifications / Integrations / Family & Privacy / App / About with backend-persisted preferences.
+- Extended Add Medicine with member assignment, weekday selection, and identification cue; added Add Checkup modal.
+- Verified with 10/10 backend pytest and full 390x844 mobile regression via testing agent; no APIs mocked.
 
-## Prioritized backlog
+## Backlog
 
 ### P0 — next core work
-- Add native scheduled notifications and permission onboarding for each saved reminder time.
-- Reconcile and migrate the uploaded APK’s family workspace, inbox, and shared dose flows into the simplified navigation without crowding Today.
+- Wire native camera & image picker into the prescription flow with permission handling.
+- Add LLM-based prescription extraction (Claude Sonnet 5 or GPT-5 vision) driven by the Emergent LLM key.
+- Add native scheduled reminders and permission onboarding.
 
-### P1 — important follow-up
-- Add prescription scan/upload and a review-before-save medicine extraction flow.
-- Add caregiver/family membership, invites, approvals, and per-member history.
-- Persist notification sound/reminder preferences in the backend or secure device storage.
+### P1 — important follow-ups
+- Google auth, WhatsApp, and Telegram integrations behind the Settings toggles.
+- Family invitations, join requests, roles, and permissions plugging into Care > Family management.
+- Offline dose logging with background sync.
 
 ### P2 — polish
-- Add adherence trends and refill alerts.
-- Add configurable reminder windows and timezone-aware scheduling.
-- Add a friendly first-run explanation and optional profile setup.
+- Adherence trends, refill projection, and per-medicine analytics.
+- Custom timezone / language configuration.
+- Eye-drop protocols, voice notes, medicine images end-to-end.
 
 ## Next task list
-1. Implement native notification scheduling with safe rescheduling after medicine edits.
-2. Add family/inbox routes from the uploaded APK behind a simple “Care circle” entry point.
-3. Add prescription scan review and preserve manual editing before saving.
+1. Integrate native camera capture + image picker into `/care/prescription`.
+2. Add AI extraction via `integration_expert` playbook for Anthropic/OpenAI vision.
+3. Wire native local notifications for reminder times with proper permission flow.
