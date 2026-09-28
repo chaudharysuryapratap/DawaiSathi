@@ -1,9 +1,19 @@
+export type FamilyGroup = {
+  id: string;
+  name: string;
+  member_ids: string[];
+  member_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Member = {
   id: string;
   name: string;
   role: string;
   color: string;
   is_primary: boolean;
+  family_group_ids: string[];
   created_at: string;
 };
 
@@ -20,6 +30,7 @@ export type Medicine = {
   image_url: string;
   active: boolean;
   member_id: string | null;
+  family_group_id: string | null;
   days: number[];
   created_at: string;
 };
@@ -60,6 +71,7 @@ export type DoseLog = {
   logged_at: string;
   local_date: string;
   member_id: string | null;
+  family_group_id: string | null;
 };
 
 export type MedicineInput = {
@@ -72,6 +84,7 @@ export type MedicineInput = {
   identification_cue?: string;
   image_url?: string;
   member_id?: string | null;
+  family_group_id?: string | null;
   days?: number[];
 };
 
@@ -83,6 +96,7 @@ export type Checkup = {
   scheduled_at: string;
   notes: string;
   member_id: string | null;
+  family_group_id: string | null;
   created_at: string;
 };
 
@@ -93,6 +107,7 @@ export type CheckupInput = {
   scheduled_at: string;
   notes?: string;
   member_id?: string | null;
+  family_group_id?: string | null;
 };
 
 export type AttentionKind =
@@ -112,6 +127,7 @@ export type AttentionItem = {
   checkup_id?: string | null;
   protocol_id?: string | null;
   member_id?: string | null;
+  family_group_id?: string | null;
 };
 
 export type NotificationPreference = {
@@ -150,6 +166,7 @@ export type EyeDropProtocol = {
   interval_minutes: number;
   steps: EyeDropStep[];
   member_id: string | null;
+  family_group_id: string | null;
   days: number[];
   active: boolean;
   created_at: string;
@@ -161,6 +178,7 @@ export type EyeDropProtocolInput = {
   interval_minutes: number;
   steps: EyeDropStepInput[];
   member_id?: string | null;
+  family_group_id?: string | null;
   days?: number[];
 };
 

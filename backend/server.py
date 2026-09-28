@@ -57,18 +57,37 @@ def add_minutes_to_time(start: str, minutes: int) -> str:
     return f"{total // 60:02d}:{total % 60:02d}"
 
 
+class FamilyGroup(BaseModel):
+    id: str
+    name: str
+    member_ids: List[str] = Field(default_factory=list)
+    member_count: int = 0
+    created_at: str
+    updated_at: str
+
+
+class FamilyGroupCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+
+
+class FamilyGroupUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+
+
 class Member(BaseModel):
     id: str
     name: str
     role: str = "member"
     color: str
     is_primary: bool = False
+    family_group_ids: List[str] = Field(default_factory=list)
     created_at: str
 
 
 class MemberCreate(BaseModel):
     name: str = Field(min_length=1, max_length=40)
     role: str = Field(default="member", max_length=30)
+    family_group_id: Optional[str] = None
 
 
 class MemberUpdate(BaseModel):
@@ -86,6 +105,7 @@ class MedicineCreate(BaseModel):
     identification_cue: str = Field(default="", max_length=120)
     image_url: str = Field(default="", max_length=500)
     member_id: Optional[str] = None
+    family_group_id: Optional[str] = None
     days: List[int] = Field(default_factory=lambda: list(DEFAULT_DAYS))
 
 
@@ -102,6 +122,7 @@ class Medicine(BaseModel):
     image_url: str = ""
     active: bool = True
     member_id: Optional[str] = None
+    family_group_id: Optional[str] = None
     days: List[int] = Field(default_factory=lambda: list(DEFAULT_DAYS))
     created_at: str
 
@@ -118,6 +139,7 @@ class MedicineUpdate(BaseModel):
     image_url: Optional[str] = Field(default=None, max_length=500)
     member_id: Optional[str] = None
     days: Optional[List[int]] = None
+    family_group_id: Optional[str] = None
     active: Optional[bool] = None
 
 
@@ -134,6 +156,7 @@ class DoseLog(BaseModel):
     logged_at: str
     local_date: str
     member_id: Optional[str] = None
+    family_group_id: Optional[str] = None
 
 
 class TodayDose(BaseModel):
@@ -176,6 +199,7 @@ class EyeDropProtocolCreate(BaseModel):
     interval_minutes: int = Field(default=5, ge=1, le=180)
     steps: List[EyeDropStepInput] = Field(min_length=1, max_length=12)
     member_id: Optional[str] = None
+    family_group_id: Optional[str] = None
     days: List[int] = Field(default_factory=lambda: list(DEFAULT_DAYS))
 
 
@@ -186,6 +210,7 @@ class EyeDropProtocolUpdate(BaseModel):
     steps: Optional[List[EyeDropStepInput]] = Field(default=None, min_length=1, max_length=12)
     member_id: Optional[str] = None
     days: Optional[List[int]] = None
+    family_group_id: Optional[str] = None
     active: Optional[bool] = None
 
 
@@ -196,6 +221,7 @@ class EyeDropProtocol(BaseModel):
     interval_minutes: int
     steps: List[EyeDropStep]
     member_id: Optional[str] = None
+    family_group_id: Optional[str] = None
     days: List[int]
     active: bool = True
     created_at: str
@@ -213,6 +239,7 @@ class ProtocolStepLog(BaseModel):
     logged_at: str
     local_date: str
     member_id: Optional[str] = None
+    family_group_id: Optional[str] = None
 
 
 class TodayProtocolStep(BaseModel):
@@ -250,6 +277,7 @@ class CheckupCreate(BaseModel):
     scheduled_at: str
     notes: str = Field(default="", max_length=400)
     member_id: Optional[str] = None
+    family_group_id: Optional[str] = None
 
 
 class CheckupUpdate(BaseModel):
@@ -259,6 +287,7 @@ class CheckupUpdate(BaseModel):
     scheduled_at: Optional[str] = None
     notes: Optional[str] = Field(default=None, max_length=400)
     member_id: Optional[str] = None
+    family_group_id: Optional[str] = None
 
 
 class Checkup(BaseModel):
@@ -269,6 +298,7 @@ class Checkup(BaseModel):
     scheduled_at: str
     notes: str
     member_id: Optional[str] = None
+    family_group_id: Optional[str] = None
     created_at: str
 
 
@@ -282,6 +312,7 @@ class AttentionItem(BaseModel):
     checkup_id: Optional[str] = None
     protocol_id: Optional[str] = None
     member_id: Optional[str] = None
+    family_group_id: Optional[str] = None
 
 
 class AttentionResponse(BaseModel):
@@ -307,18 +338,78 @@ async def ensure_primary_member() -> None:
             "role": "Primary member",
             "color": MEMBER_COLORS[0],
             "is_primary": True,
+            "family_group_ids": [],
             "created_at": now_iso(),
         }
         await db.members.insert_one(member)
 
 
-async def load_medicines_map() -> dict:
-    documents = await db.medicines.find({}, {"_id": 0}).to_list(500)
+async def ensure_family_groups() -> None:
+    await ensure_primary_member()
+    first_group = await db.family_groups.find_one({}, {"_id": 0}, sort=[("created_at", 1)])
+    if not first_group:
+        now = now_iso()
+        first_group = {
+            "id": str(uuid.uuid4()),
+            "name": "My Family",
+            "member_ids": [],
+            "created_at": now,
+            "updated_at": now,
+        }
+        await db.family_groups.insert_one(first_group)
+
+    default_group_id = first_group["id"]
+    await db.members.update_many(
+        {"family_group_ids": {"$exists": False}},
+        {"$set": {"family_group_ids": [default_group_id]}},
+    )
+    await db.members.update_many(
+        {"family_group_ids": {"$size": 0}},
+        {"$set": {"family_group_ids": [default_group_id]}},
+    )
+    member_ids = [
+        doc["id"]
+        for doc in await db.members.find(
+            {"family_group_ids": default_group_id},
+            {"_id": 0, "id": 1},
+        ).to_list(500)
+    ]
+    await db.family_groups.update_one(
+        {"id": default_group_id},
+        {"$set": {"member_ids": member_ids, "updated_at": now_iso()}},
+    )
+
+    for collection in ("medicines", "eye_drop_protocols", "checkups", "dose_logs", "protocol_step_logs"):
+        await db[collection].update_many(
+            {"family_group_id": {"$exists": False}},
+            {"$set": {"family_group_id": default_group_id}},
+        )
+
+
+async def get_family_group(group_id: str) -> dict:
+    group = await db.family_groups.find_one({"id": group_id}, {"_id": 0})
+    if not group:
+        raise HTTPException(status_code=404, detail="Family group not found")
+    return group
+
+
+async def default_family_group_id() -> str:
+    await ensure_family_groups()
+    group = await db.family_groups.find_one({}, {"_id": 0}, sort=[("created_at", 1)])
+    if not group:
+        raise HTTPException(status_code=500, detail="Family group is not configured")
+    return group["id"]
+
+
+async def load_medicines_map(family_group_id: Optional[str] = None) -> dict:
+    query = {"family_group_id": family_group_id} if family_group_id else {}
+    documents = await db.medicines.find(query, {"_id": 0}).to_list(500)
     return {document["id"]: document for document in documents}
 
 
-async def load_members_map() -> dict:
-    documents = await db.members.find({}, {"_id": 0}).to_list(200)
+async def load_members_map(family_group_id: Optional[str] = None) -> dict:
+    query = {"family_group_ids": family_group_id} if family_group_id else {}
+    documents = await db.members.find(query, {"_id": 0}).to_list(200)
     return {document["id"]: document for document in documents}
 
 
@@ -346,7 +437,7 @@ def _build_protocol_steps(inputs: List[EyeDropStepInput]) -> List[dict]:
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    await ensure_primary_member()
+    await ensure_family_groups()
 
 
 @api_router.get("/")
@@ -354,15 +445,73 @@ async def root():
     return {"message": "DawaiSathi API is ready"}
 
 
+@api_router.get("/family-groups", response_model=List[FamilyGroup])
+async def list_family_groups():
+    await ensure_family_groups()
+    groups = await db.family_groups.find({}, {"_id": 0}).sort("created_at", 1).to_list(100)
+    result = []
+    for group in groups:
+        member_count = await db.members.count_documents({"family_group_ids": group["id"]})
+        result.append(FamilyGroup(**{**group, "member_count": member_count}))
+    return result
+
+
+@api_router.post("/family-groups", response_model=FamilyGroup)
+async def create_family_group(input: FamilyGroupCreate):
+    await ensure_family_groups()
+    primary = await db.members.find_one({"is_primary": True}, {"_id": 0})
+    if not primary:
+        raise HTTPException(status_code=400, detail="Primary member not found")
+    name = input.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Family group name is required")
+    now = now_iso()
+    document = {
+        "id": str(uuid.uuid4()),
+        "name": name,
+        "member_ids": [primary["id"]],
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.family_groups.insert_one(document)
+    await db.members.update_one({"id": primary["id"]}, {"$addToSet": {"family_group_ids": document["id"]}})
+    return FamilyGroup(**{**document, "member_count": 1})
+
+
+@api_router.patch("/family-groups/{family_group_id}", response_model=FamilyGroup)
+async def rename_family_group(family_group_id: str, input: FamilyGroupUpdate):
+    group = await get_family_group(family_group_id)
+    name = input.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Family group name is required")
+    now = now_iso()
+    await db.family_groups.update_one({"id": family_group_id}, {"$set": {"name": name, "updated_at": now}})
+    group["name"] = name
+    group["updated_at"] = now
+    member_count = await db.members.count_documents({"family_group_ids": family_group_id})
+    return FamilyGroup(**{**group, "member_count": member_count})
+
+
+@api_router.get("/family-groups/{family_group_id}/members", response_model=List[Member])
+async def family_group_members(family_group_id: str):
+    await get_family_group(family_group_id)
+    documents = await db.members.find({"family_group_ids": family_group_id}, {"_id": 0}).sort([("is_primary", -1), ("created_at", 1)]).to_list(200)
+    return [Member(**document) for document in documents]
+
+
 @api_router.get("/members", response_model=List[Member])
-async def list_members():
-    await ensure_primary_member()
+async def list_members(family_group_id: Optional[str] = None):
+    await ensure_family_groups()
+    if family_group_id:
+        return await family_group_members(family_group_id)
     documents = await db.members.find({}, {"_id": 0}).sort([("is_primary", -1), ("created_at", 1)]).to_list(200)
     return [Member(**document) for document in documents]
 
 
 @api_router.post("/members", response_model=Member)
 async def create_member(input: MemberCreate):
+    group_id = input.family_group_id or await default_family_group_id()
+    await get_family_group(group_id)
     color = MEMBER_COLORS[await db.members.count_documents({}) % len(MEMBER_COLORS)]
     document = {
         "id": str(uuid.uuid4()),
@@ -370,9 +519,11 @@ async def create_member(input: MemberCreate):
         "role": input.role.strip() or "member",
         "color": color,
         "is_primary": False,
+        "family_group_ids": [group_id],
         "created_at": now_iso(),
     }
     await db.members.insert_one(document)
+    await db.family_groups.update_one({"id": group_id}, {"$addToSet": {"member_ids": document["id"]}, "$set": {"updated_at": now_iso()}})
     return Member(**document)
 
 
@@ -398,16 +549,19 @@ async def remove_member(member_id: str):
     if document.get("is_primary"):
         raise HTTPException(status_code=400, detail="Primary member cannot be removed")
     await db.members.delete_one({"id": member_id})
+    await db.family_groups.update_many({"member_ids": member_id}, {"$pull": {"member_ids": member_id}})
     await db.medicines.update_many({"member_id": member_id}, {"$set": {"member_id": None}})
     await db.eye_drop_protocols.update_many({"member_id": member_id}, {"$set": {"member_id": None}})
     return {"ok": True}
 
 
 @api_router.get("/medicines", response_model=List[Medicine])
-async def list_medicines(active_only: bool = True, member_id: Optional[str] = None):
+async def list_medicines(active_only: bool = True, member_id: Optional[str] = None, family_group_id: Optional[str] = None):
     query: dict = {}
     if active_only:
         query["active"] = True
+    if family_group_id is not None:
+        query["family_group_id"] = family_group_id
     if member_id is not None:
         query["member_id"] = member_id
     documents = await db.medicines.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
@@ -432,6 +586,7 @@ async def create_medicine(input: MedicineCreate):
         "image_url": input.image_url.strip(),
         "active": True,
         "member_id": input.member_id,
+        "family_group_id": input.family_group_id or await default_family_group_id(),
         "days": days,
         "created_at": now_iso(),
     }
@@ -492,10 +647,12 @@ async def restore_medicine(medicine_id: str):
 
 
 @api_router.get("/eye-drop-protocols", response_model=List[EyeDropProtocol])
-async def list_protocols(active_only: bool = True, member_id: Optional[str] = None):
+async def list_protocols(active_only: bool = True, member_id: Optional[str] = None, family_group_id: Optional[str] = None):
     query: dict = {}
     if active_only:
         query["active"] = True
+    if family_group_id is not None:
+        query["family_group_id"] = family_group_id
     if member_id is not None:
         query["$or"] = [{"member_id": member_id}, {"member_id": None}]
     documents = await db.eye_drop_protocols.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
@@ -512,6 +669,7 @@ async def create_protocol(input: EyeDropProtocolCreate):
         "interval_minutes": input.interval_minutes,
         "steps": _build_protocol_steps(input.steps),
         "member_id": input.member_id,
+        "family_group_id": input.family_group_id or await default_family_group_id(),
         "days": days,
         "active": True,
         "created_at": now_iso(),
@@ -577,6 +735,7 @@ async def log_protocol_step(protocol_id: str, order: int):
         "logged_at": now_iso(),
         "local_date": date_value,
         "member_id": protocol.get("member_id"),
+        "family_group_id": protocol.get("family_group_id"),
     }
     await db.protocol_step_logs.insert_one(document)
     return ProtocolStepLog(**document)
@@ -599,8 +758,11 @@ async def protocol_history(
     member_id: Optional[str] = None,
     protocol_id: Optional[str] = None,
     date: Optional[str] = None,
+    family_group_id: Optional[str] = None,
 ):
     query: dict = {}
+    if family_group_id is not None:
+        query["family_group_id"] = family_group_id
     if member_id is not None:
         query["member_id"] = member_id
     if protocol_id is not None:
@@ -612,16 +774,17 @@ async def protocol_history(
 
 
 @api_router.get("/today", response_model=TodayResponse)
-async def today(member_id: Optional[str] = None):
+async def today(member_id: Optional[str] = None, family_group_id: Optional[str] = None):
+    family_group_id = family_group_id or await default_family_group_id()
     today_value = local_date()
     weekday = datetime.now().weekday()
-    medicine_query: dict = {"active": True}
+    medicine_query: dict = {"active": True, "family_group_id": family_group_id}
     if member_id is not None:
         medicine_query["$or"] = [{"member_id": member_id}, {"member_id": None}]
     medicines = await db.medicines.find(medicine_query, {"_id": 0}).to_list(500)
-    logs = await db.dose_logs.find({"local_date": today_value}, {"_id": 0}).to_list(600)
+    logs = await db.dose_logs.find({"local_date": today_value, "family_group_id": family_group_id}, {"_id": 0}).to_list(600)
     log_index = {(log["medicine_id"], log["time"]): log for log in logs}
-    members_map = await load_members_map()
+    members_map = await load_members_map(family_group_id)
 
     doses: List[TodayDose] = []
     for medicine in medicines:
@@ -649,11 +812,11 @@ async def today(member_id: Optional[str] = None):
             )
     doses.sort(key=lambda dose: dose.time)
 
-    protocol_query: dict = {"active": True}
+    protocol_query: dict = {"active": True, "family_group_id": family_group_id}
     if member_id is not None:
         protocol_query["$or"] = [{"member_id": member_id}, {"member_id": None}]
     protocols_docs = await db.eye_drop_protocols.find(protocol_query, {"_id": 0}).to_list(200)
-    step_logs = await db.protocol_step_logs.find({"local_date": today_value}, {"_id": 0}).to_list(600)
+    step_logs = await db.protocol_step_logs.find({"local_date": today_value, "family_group_id": family_group_id}, {"_id": 0}).to_list(600)
     step_index = {(entry["protocol_id"], entry["step_order"]): entry for entry in step_logs}
     protocols: List[TodayProtocol] = []
     for protocol in protocols_docs:
@@ -715,6 +878,7 @@ async def log_dose(medicine_id: str, input: DoseLogCreate):
         "logged_at": now_iso(),
         "local_date": date_value,
         "member_id": medicine.get("member_id"),
+        "family_group_id": medicine.get("family_group_id"),
     }
     await db.dose_logs.insert_one(document)
     if int(medicine.get("quantity_remaining", 0)) > 0:
@@ -743,8 +907,11 @@ async def dose_history(
     member_id: Optional[str] = None,
     medicine_id: Optional[str] = None,
     date: Optional[str] = None,
+    family_group_id: Optional[str] = None,
 ):
     query: dict = {}
+    if family_group_id is not None:
+        query["family_group_id"] = family_group_id
     if member_id is not None:
         query["member_id"] = member_id
     if medicine_id is not None:
@@ -756,8 +923,10 @@ async def dose_history(
 
 
 @api_router.get("/checkups", response_model=List[Checkup])
-async def list_checkups(member_id: Optional[str] = None):
+async def list_checkups(member_id: Optional[str] = None, family_group_id: Optional[str] = None):
     query: dict = {}
+    if family_group_id is not None:
+        query["family_group_id"] = family_group_id
     if member_id is not None:
         query["member_id"] = member_id
     documents = await db.checkups.find(query, {"_id": 0}).sort("scheduled_at", 1).to_list(200)
@@ -778,6 +947,7 @@ async def create_checkup(input: CheckupCreate):
         "scheduled_at": input.scheduled_at,
         "notes": input.notes.strip(),
         "member_id": input.member_id,
+        "family_group_id": input.family_group_id or await default_family_group_id(),
         "created_at": now_iso(),
     }
     await db.checkups.insert_one(document)
@@ -833,14 +1003,15 @@ async def save_notification_preferences(input: NotificationPreference):
 
 
 @api_router.get("/attention", response_model=AttentionResponse)
-async def attention():
+async def attention(family_group_id: Optional[str] = None):
+    family_group_id = family_group_id or await default_family_group_id()
     today_value = local_date()
     weekday = datetime.now().weekday()
     now = datetime.now()
     items: List[AttentionItem] = []
-    medicines_map = await load_medicines_map()
-    members_map = await load_members_map()
-    logs = await db.dose_logs.find({"local_date": today_value}, {"_id": 0}).to_list(600)
+    medicines_map = await load_medicines_map(family_group_id)
+    members_map = await load_members_map(family_group_id)
+    logs = await db.dose_logs.find({"local_date": today_value, "family_group_id": family_group_id}, {"_id": 0}).to_list(600)
     log_index = {(log["medicine_id"], log["time"]) for log in logs}
     for medicine in medicines_map.values():
         if not medicine.get("active", True):
@@ -894,8 +1065,8 @@ async def attention():
                 )
             )
 
-    protocols_docs = await db.eye_drop_protocols.find({"active": True}, {"_id": 0}).to_list(200)
-    step_logs = await db.protocol_step_logs.find({"local_date": today_value}, {"_id": 0}).to_list(600)
+    protocols_docs = await db.eye_drop_protocols.find({"active": True, "family_group_id": family_group_id}, {"_id": 0}).to_list(200)
+    step_logs = await db.protocol_step_logs.find({"local_date": today_value, "family_group_id": family_group_id}, {"_id": 0}).to_list(600)
     step_taken = {(entry["protocol_id"], entry["step_order"]) for entry in step_logs}
     for protocol in protocols_docs:
         if not _dose_matches_day(protocol, weekday):
@@ -937,7 +1108,7 @@ async def attention():
                 )
 
     upcoming_horizon = now + timedelta(hours=48)
-    checkups = await db.checkups.find({}, {"_id": 0}).to_list(200)
+    checkups = await db.checkups.find({"family_group_id": family_group_id}, {"_id": 0}).to_list(200)
     for checkup in checkups:
         try:
             scheduled = datetime.fromisoformat(checkup["scheduled_at"].replace("Z", "+00:00")).replace(tzinfo=None)
@@ -962,9 +1133,10 @@ async def attention():
 
 
 @api_router.get("/upcoming-checkup", response_model=Optional[Checkup])
-async def upcoming_checkup(member_id: Optional[str] = None):
+async def upcoming_checkup(member_id: Optional[str] = None, family_group_id: Optional[str] = None):
+    family_group_id = family_group_id or await default_family_group_id()
     now = datetime.now()
-    query: dict = {}
+    query: dict = {"family_group_id": family_group_id}
     if member_id is not None:
         query["member_id"] = member_id
     documents = await db.checkups.find(query, {"_id": 0}).sort("scheduled_at", 1).to_list(50)

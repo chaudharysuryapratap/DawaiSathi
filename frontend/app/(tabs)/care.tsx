@@ -40,7 +40,7 @@ function CareLink({ icon, title, detail, onPress, testID, accent }: CareLinkProp
 export default function CareScreen() {
   const router = useRouter();
   const styles = useStyles();
-  const { members, medicines, archivedMedicines, checkups, loading, error, refresh } = useData();
+  const { activeFamilyGroup, members, medicines, archivedMedicines, checkups, loading, error, refresh } = useData();
 
   return (
     <ScreenShell testID="care-screen" header={<AppHeader />}>
@@ -59,8 +59,8 @@ export default function CareScreen() {
           <Section title="Family">
             <CareLink
               icon="people-outline"
-              title="My Family"
-              detail={`${members.length} ${members.length === 1 ? "member" : "members"}`}
+              title={activeFamilyGroup?.name ?? "My Family"}
+              detail={`${members.length} ${members.length === 1 ? "member" : "members"} · Family group`}
               onPress={() => router.push("/care/family")}
               testID="care-family"
             />

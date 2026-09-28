@@ -13,7 +13,15 @@ export default function FamilyScreen() {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ id?: string }>();
-  const { members, addMember, updateMember, removeMember, setActiveMember } = useData();
+  const {
+    activeFamilyGroup,
+    members,
+    addMember,
+    updateMember,
+    removeMember,
+    setActiveMember,
+    renameFamilyGroup,
+  } = useData();
 
   const [newName, setNewName] = useState("");
   const [renameId, setRenameId] = useState<string | null>(params.id ?? null);
@@ -39,7 +47,11 @@ export default function FamilyScreen() {
     if (!renameId || !renameValue.trim()) return;
     setBusy(true);
     try {
-      await updateMember(renameId, { name: renameValue.trim() });
+      if (renameId === "family-group") {
+        if (activeFamilyGroup) await renameFamilyGroup(activeFamilyGroup.id, renameValue.trim());
+      } else {
+        await updateMember(renameId, { name: renameValue.trim() });
+      }
       setRenameId(null);
       setRenameValue("");
     } finally {
@@ -68,6 +80,58 @@ export default function FamilyScreen() {
         <Text style={styles.eyebrow}>FAMILY MEMBERS</Text>
         <Text style={styles.title}>Who you care for</Text>
         <Text style={styles.subtitle}>Add each person once. Their medicines and history stay separate.</Text>
+
+
+        <View style={styles.groupCard}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.groupEyebrow}>FAMILY GROUP</Text>
+            {renameId === "family-group" ? (
+              <TextInput
+                value={renameValue}
+                onChangeText={setRenameValue}
+                placeholder="Family group name"
+                placeholderTextColor={colors.muted}
+                style={styles.groupRenameInput}
+                autoFocus
+                testID="family-group-rename-input"
+              />
+            ) : (
+              <Text style={styles.groupName}>{activeFamilyGroup?.name ?? "My Family"}</Text>
+            )}
+          </View>
+          {renameId === "family-group" ? (
+            <View style={styles.rowActions}>
+              <Pressable
+                onPress={submitRename}
+                disabled={busy}
+                style={({ pressed }) => [styles.mini, pressed && styles.pressed]}
+                testID="family-group-save"
+              >
+                <Ionicons name="checkmark" size={16} color={colors.brandPrimary} />
+              </Pressable>
+              <Pressable
+                onPress={() => { setRenameId(null); setRenameValue(""); }}
+                style={({ pressed }) => [styles.mini, pressed && styles.pressed]}
+                testID="family-group-cancel"
+              >
+                <Ionicons name="close" size={16} color={colors.onSurfaceSecondary} />
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable
+              onPress={() => {
+                if (!activeFamilyGroup) return;
+                setRenameId("family-group");
+                setRenameValue(activeFamilyGroup.name);
+              }}
+              style={({ pressed }) => [styles.mini, pressed && styles.pressed]}
+              testID="family-group-rename"
+            >
+              <Ionicons name="pencil" size={16} color={colors.onSurfaceSecondary} />
+            </Pressable>
+          )}
+        </View>
+
 
         <View style={styles.list}>
           {members.map((member) => {
@@ -146,6 +210,27 @@ const useStyles = makeStyles((colors) =>
     title: { color: colors.onSurface, fontSize: 26, fontWeight: "800", letterSpacing: -0.4 },
     subtitle: { color: colors.muted, fontSize: 14, lineHeight: 20, marginBottom: 4 },
     list: { gap: 8 },
+    groupCard: {
+      minHeight: 72,
+      borderRadius: 18,
+      padding: 14,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      backgroundColor: colors.brandTertiary,
+    },
+    groupEyebrow: { color: colors.brandPrimary, fontSize: 10, fontWeight: "800", letterSpacing: 1 },
+    groupName: { color: colors.onSurface, fontSize: 17, fontWeight: "800", marginTop: 3 },
+    groupRenameInput: {
+      minHeight: 40,
+      color: colors.onSurface,
+      fontSize: 16,
+      fontWeight: "800",
+      borderBottomWidth: 1,
+      borderBottomColor: colors.brandSecondary,
+      paddingVertical: 2,
+      marginTop: 1,
+    },
     row: {
       minHeight: 78,
       flexDirection: "row",

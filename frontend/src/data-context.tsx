@@ -15,6 +15,7 @@ import type {
   DoseLog,
   EyeDropProtocol,
   EyeDropProtocolInput,
+  FamilyGroup,
   Medicine,
   MedicineInput,
   Member,
@@ -25,8 +26,15 @@ import type {
 import { storage } from "./utils/storage";
 
 const ACTIVE_MEMBER_KEY = "dawaisathi:activeMember";
+const ACTIVE_FAMILY_GROUP_KEY = "dawaisathi:activeFamilyGroup";
 
 type DataContextValue = {
+  familyGroups: FamilyGroup[];
+  activeFamilyGroup: FamilyGroup | null;
+  activeFamilyGroupId: string | null;
+  setActiveFamilyGroup: (id: string | null) => void;
+  createFamilyGroup: (name: string) => Promise<FamilyGroup>;
+  renameFamilyGroup: (id: string, name: string) => Promise<void>;
   members: Member[];
   activeMember: Member | null;
   activeMemberId: string | null;
@@ -68,6 +76,8 @@ type DataContextValue = {
 const DataContext = createContext<DataContextValue | null>(null);
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
+  const [familyGroups, setFamilyGroups] = useState<FamilyGroup[]>([]);
+  const [activeFamilyGroupId, setActiveFamilyGroupIdState] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [activeMemberId, setActiveMemberIdState] = useState<string | null>(null);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
@@ -88,78 +98,140 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     void storage.setItem(ACTIVE_MEMBER_KEY, id);
   }, []);
 
+  const setActiveFamilyGroup = useCallback((id: string | null) => {
+    setActiveFamilyGroupIdState(id);
+    setLoading(true);
+    void storage.setItem(ACTIVE_FAMILY_GROUP_KEY, id);
+  }, []);
+
+  const loadGroupData = useCallback(async (groupId: string) => {
+    const storedMember = await storage.getItem<string | null>(ACTIVE_MEMBER_KEY, null);
+    const memberList = await api.members(groupId);
+    setMembers(memberList);
+
+    const nextMemberId =
+      storedMember && memberList.some((member) => member.id === storedMember)
+        ? storedMember
+        : memberList.find((member) => member.is_primary)?.id ?? memberList[0]?.id ?? null;
+
+    setActiveMemberIdState(nextMemberId);
+    if (nextMemberId !== storedMember) {
+      void storage.setItem(ACTIVE_MEMBER_KEY, nextMemberId);
+    }
+
+    const [everyMedicine, activeMedicineList, protocolList, checkupList, attentionData] = await Promise.all([
+      api.medicines(undefined, false, groupId),
+      api.medicines(undefined, true, groupId),
+      api.protocols(undefined, true, groupId),
+      api.checkups(undefined, groupId),
+      api.attention(groupId),
+    ]);
+
+    setMedicines(activeMedicineList);
+    setArchivedMedicines(everyMedicine.filter((medicine) => !medicine.active));
+    setProtocols(protocolList);
+    setCheckups(checkupList);
+    setAttention(attentionData.items);
+
+    const [todayData, historyData, protocolHistoryData, upcoming] = await Promise.all([
+      api.today(nextMemberId, groupId),
+      api.history({ memberId: nextMemberId, familyGroupId: groupId }),
+      api.protocolHistory({ memberId: nextMemberId, familyGroupId: groupId }),
+      api.upcomingCheckup(nextMemberId, groupId),
+    ]);
+
+    setTodayDoses(todayData.doses);
+    setTodayProtocols(todayData.protocols ?? []);
+    setHistory(historyData);
+    setProtocolHistory(protocolHistoryData);
+    setUpcomingCheckup(upcoming);
+  }, []);
+
   const refresh = useCallback(async () => {
     setError(null);
+    setLoading(true);
     try {
-      const stored = await storage.getItem<string | null>(ACTIVE_MEMBER_KEY, null);
-      const [memberList, everyMedicine, activeMedicineList, protocolList, checkupList, attentionData] = await Promise.all([
-        api.members(),
-        api.medicines(undefined, false),
-        api.medicines(undefined, true),
-        api.protocols(undefined, true),
-        api.checkups(),
-        api.attention(),
-      ]);
-      setMembers(memberList);
-      const activeId = stored && memberList.some((member) => member.id === stored)
-        ? stored
-        : memberList.find((member) => member.is_primary)?.id ?? memberList[0]?.id ?? null;
-      setActiveMemberIdState(activeId);
-      if (activeId !== stored) {
-        void storage.setItem(ACTIVE_MEMBER_KEY, activeId);
+      const groups = await api.familyGroups();
+      setFamilyGroups(groups);
+
+      const storedGroup = await storage.getItem<string | null>(ACTIVE_FAMILY_GROUP_KEY, null);
+      const groupId =
+        storedGroup && groups.some((group) => group.id === storedGroup)
+          ? storedGroup
+          : groups[0]?.id ?? null;
+
+      setActiveFamilyGroupIdState(groupId);
+      if (groupId !== storedGroup) {
+        void storage.setItem(ACTIVE_FAMILY_GROUP_KEY, groupId);
       }
-      setMedicines(activeMedicineList);
-      setArchivedMedicines(everyMedicine.filter((medicine) => !medicine.active));
-      setProtocols(protocolList);
-      setCheckups(checkupList);
-      setAttention(attentionData.items);
-      const [todayData, historyData, protocolHistoryData, upcoming] = await Promise.all([
-        api.today(activeId),
-        api.history({ memberId: activeId }),
-        api.protocolHistory({ memberId: activeId }),
-        api.upcomingCheckup(activeId),
-      ]);
-      setTodayDoses(todayData.doses);
-      setTodayProtocols(todayData.protocols ?? []);
-      setHistory(historyData);
-      setProtocolHistory(protocolHistoryData);
-      setUpcomingCheckup(upcoming);
+
+      if (groupId) {
+        await loadGroupData(groupId);
+      } else {
+        setMembers([]);
+        setActiveMemberIdState(null);
+        setMedicines([]);
+        setArchivedMedicines([]);
+        setProtocols([]);
+        setTodayDoses([]);
+        setTodayProtocols([]);
+        setHistory([]);
+        setProtocolHistory([]);
+        setCheckups([]);
+        setUpcomingCheckup(null);
+        setAttention([]);
+      }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to load DawaiSathi.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadGroupData]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   useEffect(() => {
-    if (!activeMemberId) return;
+    if (!activeFamilyGroupId) return;
     let cancelled = false;
-    (async () => {
-      try {
-        const [todayData, historyData, protocolHistoryData, upcoming] = await Promise.all([
-          api.today(activeMemberId),
-          api.history({ memberId: activeMemberId }),
-          api.protocolHistory({ memberId: activeMemberId }),
-          api.upcomingCheckup(activeMemberId),
-        ]);
+    setLoading(true);
+    void loadGroupData(activeFamilyGroupId)
+      .catch(() => {
+        // Keep the current view if a background family switch temporarily fails.
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFamilyGroupId, loadGroupData]);
+
+  useEffect(() => {
+    if (!activeFamilyGroupId || !activeMemberId) return;
+    let cancelled = false;
+    void Promise.all([
+      api.today(activeMemberId, activeFamilyGroupId),
+      api.history({ memberId: activeMemberId, familyGroupId: activeFamilyGroupId }),
+      api.protocolHistory({ memberId: activeMemberId, familyGroupId: activeFamilyGroupId }),
+      api.upcomingCheckup(activeMemberId, activeFamilyGroupId),
+    ])
+      .then(([todayData, historyData, protocolHistoryData, upcoming]) => {
         if (cancelled) return;
         setTodayDoses(todayData.doses);
         setTodayProtocols(todayData.protocols ?? []);
         setHistory(historyData);
         setProtocolHistory(protocolHistoryData);
         setUpcomingCheckup(upcoming);
-      } catch {
-        // silent: keep whatever previously loaded
-      }
-    })();
+      })
+      .catch(() => {
+        // Keep the current view if a member switch temporarily fails.
+      });
     return () => {
       cancelled = true;
     };
-  }, [activeMemberId]);
+  }, [activeFamilyGroupId, activeMemberId]);
 
   const runAndRefresh = useCallback(
     async <T,>(action: () => Promise<T>): Promise<T> => {
@@ -171,8 +243,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo<DataContextValue>(() => {
+    const activeFamilyGroup = familyGroups.find((group) => group.id === activeFamilyGroupId) ?? null;
     const activeMember = members.find((member) => member.id === activeMemberId) ?? null;
+
     return {
+      familyGroups,
+      activeFamilyGroup,
+      activeFamilyGroupId,
+      setActiveFamilyGroup,
+      createFamilyGroup: async (name) => {
+        const created = await api.createFamilyGroup(name);
+        await refresh();
+        setActiveFamilyGroup(created.id);
+        return created;
+      },
+      renameFamilyGroup: async (id, name) => {
+        await runAndRefresh(() => api.renameFamilyGroup(id, name));
+      },
       members,
       activeMember,
       activeMemberId,
@@ -191,14 +278,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       loading,
       error,
       refresh,
-      addMember: (name, role = "member") => runAndRefresh(() => api.createMember(name, role)),
+      addMember: (name, role = "member") =>
+        runAndRefresh(() => api.createMember(name, role, activeFamilyGroupId)),
       updateMember: async (id, patch) => {
         await runAndRefresh(() => api.updateMember(id, patch));
       },
       removeMember: async (id) => {
         await runAndRefresh(() => api.removeMember(id));
       },
-      addMedicine: (input) => runAndRefresh(() => api.createMedicine(input)),
+      addMedicine: (input) =>
+        runAndRefresh(() =>
+          api.createMedicine({
+            ...input,
+            family_group_id: input.family_group_id ?? activeFamilyGroupId,
+          }),
+        ),
       updateMedicine: async (id, input) => {
         await runAndRefresh(() => api.updateMedicine(id, input));
       },
@@ -217,7 +311,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       undoDose: async (id, time, date) => {
         await runAndRefresh(() => api.undoDose(id, time, date));
       },
-      addProtocol: (input) => runAndRefresh(() => api.createProtocol(input)),
+      addProtocol: (input) =>
+        runAndRefresh(() =>
+          api.createProtocol({
+            ...input,
+            family_group_id: input.family_group_id ?? activeFamilyGroupId,
+          }),
+        ),
       updateProtocol: async (id, input) => {
         await runAndRefresh(() => api.updateProtocol(id, input));
       },
@@ -230,7 +330,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       undoProtocolStep: async (id, order, date) => {
         await runAndRefresh(() => api.undoProtocolStep(id, order, date));
       },
-      addCheckup: (input) => runAndRefresh(() => api.createCheckup(input)),
+      addCheckup: (input) =>
+        runAndRefresh(() =>
+          api.createCheckup({
+            ...input,
+            family_group_id: input.family_group_id ?? activeFamilyGroupId,
+          }),
+        ),
       updateCheckup: async (id, input) => {
         await runAndRefresh(() => api.updateCheckup(id, input));
       },
@@ -239,6 +345,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       },
     };
   }, [
+    familyGroups,
+    activeFamilyGroupId,
+    setActiveFamilyGroup,
     members,
     activeMemberId,
     setActiveMember,
@@ -255,6 +364,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     loading,
     error,
     refresh,
+    loadGroupData,
     runAndRefresh,
   ]);
 

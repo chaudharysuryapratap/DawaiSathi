@@ -4,14 +4,14 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AddSheet } from "@/src/components/add-sheet";
 import { AttentionCenter } from "@/src/components/attention-center";
-import { MemberSelector } from "@/src/components/member-selector";
+import { FamilyGroupSelector } from "@/src/components/family-group-selector";
 import { useData } from "@/src/data-context";
 import { makeStyles, useTheme } from "@/src/theme";
 
 export function AppHeader({ testID }: { testID?: string }) {
   const { colors } = useTheme();
   const styles = useStyles();
-  const { attention } = useData();
+  const { attention, activeFamilyGroup } = useData();
   const [showAttention, setShowAttention] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const count = attention.length;
@@ -22,7 +22,7 @@ export function AppHeader({ testID }: { testID?: string }) {
           <View style={styles.brandMark}>
             <Ionicons name="leaf" size={16} color={colors.onBrandPrimary} />
           </View>
-          <Text style={styles.brandText}>DawaiSathi</Text>
+          <Text style={styles.brandText} numberOfLines={1}>{activeFamilyGroup?.name ?? "My Family"}</Text>
         </View>
         <View style={styles.actions}>
           <Pressable
@@ -48,7 +48,7 @@ export function AppHeader({ testID }: { testID?: string }) {
           </Pressable>
         </View>
       </View>
-      <MemberSelector />
+      <FamilyGroupSelector />
       <AttentionCenter visible={showAttention} onClose={() => setShowAttention(false)} />
       <AddSheet visible={showAdd} onClose={() => setShowAdd(false)} />
     </View>
@@ -63,7 +63,7 @@ const useStyles = makeStyles((colors) =>
       alignItems: "center",
       justifyContent: "space-between",
     },
-    brand: { flexDirection: "row", alignItems: "center", gap: 10 },
+    brand: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 },
     brandMark: {
       width: 34,
       height: 34,
@@ -72,7 +72,7 @@ const useStyles = makeStyles((colors) =>
       alignItems: "center",
       justifyContent: "center",
     },
-    brandText: { color: colors.onSurface, fontSize: 20, fontWeight: "850", letterSpacing: -0.3 },
+    brandText: { color: colors.onSurface, fontSize: 20, fontWeight: "850", letterSpacing: -0.3, flexShrink: 1 },
     actions: { flexDirection: "row", alignItems: "center", gap: 10 },
     iconButton: {
       width: 44,
