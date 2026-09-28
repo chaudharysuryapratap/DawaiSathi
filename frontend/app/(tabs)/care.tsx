@@ -59,8 +59,8 @@ export default function CareScreen() {
           <Section title="Family">
             <CareLink
               icon="people-outline"
-              title={activeFamilyGroup?.name ?? "My Family"}
-              detail={`${members.length} ${members.length === 1 ? "member" : "members"} · Family group`}
+              title="My Family"
+              detail={`${members.length} ${members.length === 1 ? "member" : "members"}`}
               onPress={() => router.push("/care/family")}
               testID="care-family"
             />
