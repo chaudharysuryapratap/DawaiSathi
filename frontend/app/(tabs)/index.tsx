@@ -193,7 +193,11 @@ export default function TodayScreen() {
       <MedicineDetailSheet
         visible={selectedDose !== null}
         onClose={() => setSelectedDose(null)}
-        dose={selectedDose}
+        dose={
+          selectedDose
+            ? todayDoses.find((dose) => dose.dose_id === selectedDose.dose_id) ?? selectedDose
+            : null
+        }
       />
       <EyeDropDetailSheet
         visible={selectedProtocol !== null}

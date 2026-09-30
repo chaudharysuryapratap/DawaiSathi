@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
 
 import { BottomSheet } from "@/src/components/bottom-sheet";
 import { useData } from "@/src/data-context";
@@ -29,15 +30,19 @@ export function AttentionCenter({ visible, onClose }: { visible: boolean; onClos
   const styles = useStyles();
   const { colors } = useTheme();
   const { attention, refresh, logDose } = useData();
+  const [error, setError] = useState<string | null>(null);
 
   const takeAction = async (item: AttentionItem) => {
     if ((item.kind === "missed-dose" || item.kind === "late-dose") && item.medicine_id) {
       const time = item.id.split(":")[2];
+      setError(null);
       try {
         await logDose(item.medicine_id, time);
-      } catch {
-        // no-op — refresh will surface latest state
+        await refresh();
+      } catch (requestError) {
+        setError(requestError instanceof Error ? requestError.message : "The dose could not be saved.");
       }
+      return;
     } else if (item.kind === "refill" && item.medicine_id) {
       onClose();
       router.push(`/care/medicines?refill=${item.medicine_id}`);
@@ -47,7 +52,6 @@ export function AttentionCenter({ visible, onClose }: { visible: boolean; onClos
       router.push(`/care/checkups?id=${item.checkup_id}`);
       return;
     }
-    await refresh();
   };
 
   return (
@@ -90,6 +94,7 @@ export function AttentionCenter({ visible, onClose }: { visible: boolean; onClos
           })}
         </View>
       )}
+      {error ? <Text style={{ color: colors.error, fontSize: 12 }}>{error}</Text> : null}
     </BottomSheet>
   );
 }
@@ -97,7 +102,7 @@ export function AttentionCenter({ visible, onClose }: { visible: boolean; onClos
 const useStyles = makeStyles((colors) =>
   StyleSheet.create({
     empty: { alignItems: "center", padding: 22, gap: 8 },
-    emptyTitle: { color: colors.onSurface, fontSize: 16, fontWeight: "750" },
+    emptyTitle: { color: colors.onSurface, fontSize: 16, fontWeight: "700" },
     emptyText: { color: colors.muted, fontSize: 13, textAlign: "center", lineHeight: 19 },
     list: { gap: 10 },
     row: {

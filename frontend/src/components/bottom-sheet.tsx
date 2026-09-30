@@ -75,19 +75,27 @@ export function BottomSheet({ visible, onClose, title, description, footer, scro
       animationType={Platform.OS === "web" ? "fade" : "none"}
       onRequestClose={onClose}
     >
-      <Pressable style={styles.backdrop} onPress={onClose} testID={testID ? `${testID}-backdrop` : undefined} />
-      <Animated.View style={[styles.sheet, animated]} testID={testID}>
-        <View style={[styles.sheetInner, { paddingTop: 10 }]}>{containerBody}</View>
-      </Animated.View>
+      <View style={styles.modalRoot}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          testID={testID ? `${testID}-backdrop` : undefined}
+        />
+        <Animated.View style={[styles.sheet, animated]} testID={testID}>
+          <View style={[styles.sheetInner, { paddingTop: 10 }]}>{containerBody}</View>
+        </Animated.View>
+      </View>
     </Modal>
   );
 }
 
 const useStyles = makeStyles((colors) =>
   StyleSheet.create({
+    modalRoot: { flex: 1 },
     backdrop: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       backgroundColor: "rgba(15,23,20,0.45)",
+      zIndex: 0,
     },
     sheet: {
       position: "absolute",
@@ -95,6 +103,8 @@ const useStyles = makeStyles((colors) =>
       right: 0,
       bottom: 0,
       maxHeight: "92%",
+      zIndex: 1,
+      elevation: 1,
     },
     sheetInner: {
       backgroundColor: colors.surface,

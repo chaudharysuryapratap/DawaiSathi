@@ -194,7 +194,7 @@ const useStyles = makeStyles((colors) =>
     },
     avatar: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
     avatarLetter: { color: "#FFFFFF", fontWeight: "800", fontSize: 15 },
-    name: { color: colors.onSurface, fontSize: 15, fontWeight: "750" },
+    name: { color: colors.onSurface, fontSize: 15, fontWeight: "700" },
     role: { color: colors.muted, fontSize: 12, marginTop: 1 },
     rowActions: { flexDirection: "row", gap: 4 },
     mini: {

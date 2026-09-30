@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { AddSheet } from "@/src/components/add-sheet";
 import { AttentionCenter } from "@/src/components/attention-center";
 import { FamilyGroupSelector } from "@/src/components/family-group-selector";
+import { MemberSelector } from "@/src/components/member-selector";
 import { useData } from "@/src/data-context";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -43,6 +44,9 @@ export function AppHeader({ testID }: { testID?: string }) {
           </Pressable>
         </View>
       </View>
+      <View style={styles.memberRow}>
+        <MemberSelector />
+      </View>
       <AttentionCenter visible={showAttention} onClose={() => setShowAttention(false)} />
       <AddSheet visible={showAdd} onClose={() => setShowAdd(false)} />
     </View>
@@ -57,8 +61,9 @@ const useStyles = makeStyles((colors) =>
       alignItems: "center",
       justifyContent: "space-between",
     },
+    memberRow: { alignItems: "flex-start" },
     brand: { flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0 },
-    actions: { flexDirection: "row", alignItems: "center", gap: 10 },
+    actions: { flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 0 },
     iconButton: {
       width: 44,
       height: 44,

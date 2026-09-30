@@ -1,6 +1,7 @@
+from pymongo.errors import DuplicateKeyError
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Annotated, List, Optional
 import logging
 import os
 import uuid
@@ -18,6 +19,17 @@ load_dotenv(ROOT_DIR / ".env")
 mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
+    "http://localhost:19006",
+    "http://127.0.0.1:19006",
+)
+cors_origins = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ORIGINS", ",".join(DEFAULT_CORS_ORIGINS)).split(",")
+    if origin.strip()
+]
 
 app = FastAPI(title="DawaiSathi API")
 api_router = APIRouter(prefix="/api")
@@ -25,6 +37,7 @@ api_router = APIRouter(prefix="/api")
 MEMBER_COLORS = ["#3B7A57", "#C67D0A", "#2B6CB0", "#8E4EC6", "#BA1A1A", "#0EA5A0"]
 DEFAULT_DAYS = [0, 1, 2, 3, 4, 5, 6]
 EYE_VALUES = {"left", "right", "both"}
+TimeValue = Annotated[str, Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")]
 
 
 def now_utc() -> datetime:
@@ -99,7 +112,7 @@ class MedicineCreate(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     dosage: str = Field(min_length=1, max_length=40)
     frequency: str = Field(default="Daily", max_length=30)
-    times: List[str] = Field(min_length=1, max_length=6)
+    times: List[TimeValue] = Field(min_length=1, max_length=6)
     instructions: str = Field(default="", max_length=180)
     quantity_total: int = Field(default=0, ge=0, le=10000)
     identification_cue: str = Field(default="", max_length=120)
@@ -131,7 +144,7 @@ class MedicineUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=80)
     dosage: Optional[str] = Field(default=None, min_length=1, max_length=40)
     frequency: Optional[str] = Field(default=None, max_length=30)
-    times: Optional[List[str]] = Field(default=None, min_length=1, max_length=6)
+    times: Optional[List[TimeValue]] = Field(default=None, min_length=1, max_length=6)
     instructions: Optional[str] = Field(default=None, max_length=180)
     quantity_total: Optional[int] = Field(default=None, ge=0, le=10000)
     quantity_remaining: Optional[int] = Field(default=None, ge=0, le=10000)
@@ -144,7 +157,7 @@ class MedicineUpdate(BaseModel):
 
 
 class DoseLogCreate(BaseModel):
-    time: str = Field(min_length=1, max_length=10)
+    time: TimeValue
 
 
 class DoseLog(BaseModel):
@@ -439,6 +452,16 @@ def _build_protocol_steps(inputs: List[EyeDropStepInput]) -> List[dict]:
 async def startup_event() -> None:
     await ensure_family_groups()
 
+    await db.dose_logs.create_index(
+        [
+            ("medicine_id", 1),
+            ("time", 1),
+            ("local_date", 1),
+        ],
+        unique=True,
+        name="uniq_medicine_time_date",
+    )
+
 
 @api_router.get("/")
 async def root():
@@ -573,6 +596,18 @@ async def create_medicine(input: MedicineCreate):
     if not input.times:
         raise HTTPException(status_code=422, detail="Add at least one reminder time")
     days = input.days or list(DEFAULT_DAYS)
+    family_group_id = input.family_group_id or await default_family_group_id()
+    await get_family_group(family_group_id)
+    if input.member_id is not None:
+        member = await db.members.find_one(
+            {"id": input.member_id, "family_group_ids": family_group_id},
+            {"_id": 0},
+        )
+        if not member:
+            raise HTTPException(
+                status_code=422,
+                detail="Member does not belong to the selected family group",
+            )
     document = {
         "id": str(uuid.uuid4()),
         "name": input.name.strip(),
@@ -586,7 +621,7 @@ async def create_medicine(input: MedicineCreate):
         "image_url": input.image_url.strip(),
         "active": True,
         "member_id": input.member_id,
-        "family_group_id": input.family_group_id or await default_family_group_id(),
+        "family_group_id": family_group_id,
         "days": days,
         "created_at": now_iso(),
     }
@@ -602,6 +637,22 @@ async def update_medicine(medicine_id: str, input: MedicineUpdate):
             updates[field] = updates[field].strip()
     if not updates:
         raise HTTPException(status_code=400, detail="No changes supplied")
+    existing = await db.medicines.find_one({"id": medicine_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Medicine not found")
+    family_group_id = updates.get("family_group_id", existing["family_group_id"])
+    member_id = updates.get("member_id", existing.get("member_id"))
+    await get_family_group(family_group_id)
+    if member_id is not None:
+        member = await db.members.find_one(
+            {"id": member_id, "family_group_ids": family_group_id},
+            {"_id": 0},
+        )
+        if not member:
+            raise HTTPException(
+                status_code=422,
+                detail="Member does not belong to the selected family group",
+            )
     result = await db.medicines.update_one({"id": medicine_id}, {"$set": updates})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Medicine not found")
@@ -860,15 +911,27 @@ async def today(member_id: Optional[str] = None, family_group_id: Optional[str] 
 
 @api_router.post("/medicines/{medicine_id}/dose", response_model=DoseLog)
 async def log_dose(medicine_id: str, input: DoseLogCreate):
-    medicine = await db.medicines.find_one({"id": medicine_id, "active": True}, {"_id": 0})
+    medicine = await db.medicines.find_one(
+        {"id": medicine_id, "active": True}, {"_id": 0}
+    )
     if not medicine:
         raise HTTPException(status_code=404, detail="Medicine not found")
+    if input.time not in medicine["times"]:
+        raise HTTPException(
+            status_code=422,
+            detail="Dose time is not part of this medicine's schedule",
+        )
+
     date_value = local_date()
-    existing = await db.dose_logs.find_one(
-        {"medicine_id": medicine_id, "time": input.time, "local_date": date_value}, {"_id": 0}
-    )
+    dose_filter = {
+        "medicine_id": medicine_id,
+        "time": input.time,
+        "local_date": date_value,
+    }
+    existing = await db.dose_logs.find_one(dose_filter, {"_id": 0})
     if existing:
         return DoseLog(**existing)
+
     document = {
         "id": str(uuid.uuid4()),
         "medicine_id": medicine_id,
@@ -879,10 +942,28 @@ async def log_dose(medicine_id: str, input: DoseLogCreate):
         "local_date": date_value,
         "member_id": medicine.get("member_id"),
         "family_group_id": medicine.get("family_group_id"),
+        "quantity_deducted": False,
     }
-    await db.dose_logs.insert_one(document)
-    if int(medicine.get("quantity_remaining", 0)) > 0:
-        await db.medicines.update_one({"id": medicine_id}, {"$inc": {"quantity_remaining": -1}})
+
+    try:
+        await db.dose_logs.insert_one(document)
+    except DuplicateKeyError:
+        existing = await db.dose_logs.find_one(dose_filter, {"_id": 0})
+        if existing:
+            return DoseLog(**existing)
+        raise HTTPException(status_code=409, detail="This dose was already logged.")
+
+    stock_result = await db.medicines.update_one(
+        {"id": medicine_id, "quantity_remaining": {"$gt": 0}},
+        {"$inc": {"quantity_remaining": -1}},
+    )
+    if stock_result.modified_count == 1:
+        await db.dose_logs.update_one(
+            {"id": document["id"]},
+            {"$set": {"quantity_deducted": True}},
+        )
+        document["quantity_deducted"] = True
+
     return DoseLog(**document)
 
 
@@ -890,16 +971,22 @@ async def log_dose(medicine_id: str, input: DoseLogCreate):
 async def undo_dose(medicine_id: str, time: str = Query(...), date: Optional[str] = None):
     date_value = date or local_date()
     result = await db.dose_logs.find_one_and_delete(
-        {"medicine_id": medicine_id, "time": time, "local_date": date_value}
+        {
+            "medicine_id": medicine_id,
+            "time": time,
+            "local_date": date_value,
+        }
     )
     if not result:
         raise HTTPException(status_code=404, detail="Dose log not found")
-    await db.medicines.update_one(
-        {"id": medicine_id, "quantity_remaining": {"$lt": 10000}},
-        {"$inc": {"quantity_remaining": 1}},
-    )
-    return {"ok": True}
 
+    # Restore stock only when this log explicitly records that stock was deducted.
+    if result.get("quantity_deducted") is True:
+        await db.medicines.update_one(
+            {"id": medicine_id, "quantity_remaining": {"$lt": 10000}},
+            {"$inc": {"quantity_remaining": 1}},
+        )
+    return {"ok": True}
 
 @api_router.get("/doses/history", response_model=List[DoseLog])
 async def dose_history(
@@ -1154,7 +1241,7 @@ app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

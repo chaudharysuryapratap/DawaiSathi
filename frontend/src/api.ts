@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import { Platform } from "react-native";
 
 import type {
   AttentionItem,
@@ -17,12 +18,16 @@ import type {
   TodayProtocol,
 } from "./types";
 
-type ExpoConfig = { extra?: { backendUrl?: string } };
+type ExpoConfig = { extra?: { backendUrl?: string; backendUrlWeb?: string } };
 const config = Constants.expoConfig as ExpoConfig | null;
 const configuredUrl =
-  config?.extra?.backendUrl ??
-  process.env.EXPO_BACKEND_URL ??
-  process.env.EXPO_PUBLIC_BACKEND_URL;
+  Platform.OS === "web"
+    ? process.env.EXPO_PUBLIC_BACKEND_URL_WEB ??
+      config?.extra?.backendUrlWeb ??
+      "http://127.0.0.1:8000"
+    : config?.extra?.backendUrl ??
+      process.env.EXPO_BACKEND_URL ??
+      process.env.EXPO_PUBLIC_BACKEND_URL;
 export const API_BASE_URL = `${configuredUrl?.replace(/\/$/, "") ?? ""}/api`;
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {

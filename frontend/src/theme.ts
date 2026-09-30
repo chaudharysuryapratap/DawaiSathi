@@ -110,13 +110,16 @@ setColorScheme?.(themes.dark ? null : defaultScheme);
 
 export function useTheme(): { scheme: ColorScheme; colors: ThemeColors } {
   const system = useColorScheme();
-  const scheme: ColorScheme = system && themes[system] ? system : defaultScheme;
+  const scheme: ColorScheme =
+    (system === "light" || system === "dark") && themes[system]
+      ? system
+      : defaultScheme;
   return { scheme, colors: themes[scheme] ?? themes.light };
 }
 
 // Themed StyleSheet: returns a hook that builds the sheet from the active
 // scheme's colors and memoizes it until the scheme changes.
-export function makeStyles<T extends StyleSheet.NamedStyles<T> | StyleSheet.NamedStyles<any>>(
+export function makeStyles<T extends { [key: string]: object }>(
   factory: (colors: ThemeColors) => T & StyleSheet.NamedStyles<any>,
 ): () => T {
   return function useStyles(): T {
@@ -124,5 +127,3 @@ export function makeStyles<T extends StyleSheet.NamedStyles<T> | StyleSheet.Name
     return useMemo(() => StyleSheet.create(factory(colors)), [colors]);
   };
 }
-
-

@@ -174,10 +174,12 @@ const useStyles = makeStyles((colors) =>
     selector: {
       alignSelf: "flex-start",
       maxWidth: "100%",
+      minWidth: 0,
+      flexShrink: 1,
       paddingVertical: 4,
       paddingHorizontal: 0,
     },
-    selectorLabel: { color: colors.onSurface, fontSize: 20, fontWeight: "850", letterSpacing: -0.3, maxWidth: 280 },
+    selectorLabel: { color: colors.onSurface, fontSize: 24, fontWeight: "800", letterSpacing: -0.3, flexShrink: 1 },
     list: { gap: 8 },
     row: { flexDirection: "row", alignItems: "center", gap: 8 },
     rowMain: {

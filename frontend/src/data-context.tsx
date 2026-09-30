@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -76,6 +77,7 @@ type DataContextValue = {
 const DataContext = createContext<DataContextValue | null>(null);
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
+  const loadGeneration = useRef(0);
   const [familyGroups, setFamilyGroups] = useState<FamilyGroup[]>([]);
   const [activeFamilyGroupId, setActiveFamilyGroupIdState] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
@@ -105,8 +107,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loadGroupData = useCallback(async (groupId: string) => {
+    const generation = ++loadGeneration.current;
     const storedMember = await storage.getItem<string | null>(ACTIVE_MEMBER_KEY, null);
     const memberList = await api.members(groupId);
+    if (generation !== loadGeneration.current) return;
     setMembers(memberList);
 
     const nextMemberId =
@@ -127,6 +131,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       api.attention(groupId),
     ]);
 
+    if (generation !== loadGeneration.current) return;
     setMedicines(activeMedicineList);
     setArchivedMedicines(everyMedicine.filter((medicine) => !medicine.active));
     setProtocols(protocolList);
@@ -140,6 +145,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       api.upcomingCheckup(nextMemberId, groupId),
     ]);
 
+    if (generation !== loadGeneration.current) return;
     setTodayDoses(todayData.doses);
     setTodayProtocols(todayData.protocols ?? []);
     setHistory(historyData);
@@ -189,16 +195,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, [loadGroupData]);
 
   useEffect(() => {
-    void refresh();
+    void Promise.resolve().then(refresh);
   }, [refresh]);
 
   useEffect(() => {
     if (!activeFamilyGroupId) return;
     let cancelled = false;
-    setLoading(true);
-    void loadGroupData(activeFamilyGroupId)
-      .catch(() => {
-        // Keep the current view if a background family switch temporarily fails.
+    void Promise.resolve()
+      .then(() => {
+        if (cancelled) return;
+        setLoading(true);
+        return loadGroupData(activeFamilyGroupId);
+      })
+      .catch((requestError) => {
+        setError(requestError instanceof Error ? requestError.message : "Unable to load this family group.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -225,8 +235,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         setProtocolHistory(protocolHistoryData);
         setUpcomingCheckup(upcoming);
       })
-      .catch(() => {
-        // Keep the current view if a member switch temporarily fails.
+      .catch((requestError) => {
+        if (!cancelled) {
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Unable to load this member's care data.",
+          );
+        }
       });
     return () => {
       cancelled = true;
@@ -306,10 +322,98 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         await runAndRefresh(() => api.refillMedicine(id, quantity));
       },
       logDose: async (id, time) => {
-        await runAndRefresh(() => api.logDose(id, time));
+        const previous = todayDoses.find(
+          (dose) => dose.medicine_id === id && dose.time === time,
+        );
+
+        if (!previous) {
+          await runAndRefresh(() => api.logDose(id, time));
+          return;
+        }
+
+        const optimisticLoggedAt = new Date().toISOString();
+
+        setTodayDoses((current) =>
+          current.map((dose) =>
+            dose.dose_id === previous.dose_id
+              ? {
+                  ...dose,
+                  logged_at: optimisticLoggedAt,
+                  log_id: "pending",
+                }
+              : dose,
+          ),
+        );
+
+        try {
+          const saved = await api.logDose(id, time);
+
+          setTodayDoses((current) =>
+            current.map((dose) =>
+              dose.dose_id === previous.dose_id
+                ? {
+                    ...dose,
+                    logged_at: saved.logged_at,
+                    log_id: saved.id,
+                  }
+                : dose,
+            ),
+          );
+
+          await refresh();
+        } catch (requestError) {
+          setTodayDoses((current) =>
+            current.map((dose) =>
+              dose.dose_id === previous.dose_id
+                ? {
+                    ...dose,
+                    logged_at: previous.logged_at,
+                    log_id: previous.log_id,
+                  }
+                : dose,
+            ),
+          );
+
+          throw requestError;
+        }
       },
       undoDose: async (id, time, date) => {
-        await runAndRefresh(() => api.undoDose(id, time, date));
+        const previous = todayDoses.find(
+          (dose) => dose.medicine_id === id && dose.time === time,
+        );
+
+        if (!previous) {
+          await runAndRefresh(() => api.undoDose(id, time, date));
+          return;
+        }
+
+        setTodayDoses((current) =>
+          current.map((dose) =>
+            dose.dose_id === previous.dose_id
+              ? { ...dose, logged_at: null, log_id: null }
+              : dose,
+          ),
+        );
+
+        try {
+          await api.undoDose(id, time, date);
+
+          await refresh();
+        } catch (requestError) {
+          setTodayDoses((current) =>
+            current.map((dose) =>
+              dose.dose_id === previous.dose_id
+                ? {
+                    ...dose,
+                    logged_at: previous.logged_at,
+                    log_id: previous.log_id,
+                  }
+                : dose,
+            ),
+          );
+
+          throw requestError;
+        }
       },
       addProtocol: (input) =>
         runAndRefresh(() =>
@@ -364,7 +468,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     loading,
     error,
     refresh,
-    loadGroupData,
     runAndRefresh,
   ]);
 
