@@ -1,10 +1,19 @@
 export type FamilyGroup = {
   id: string;
   name: string;
+  owner_user_id?: string | null;
   member_ids: string[];
   member_count: number;
   created_at: string;
   updated_at: string;
+};
+
+export type Account = {
+  id: string;
+  email: string;
+  name: string;
+  is_owner: boolean;
+  created_at: string;
 };
 
 export type Member = {
@@ -72,6 +81,23 @@ export type DoseLog = {
   local_date: string;
   member_id: string | null;
   family_group_id: string | null;
+};
+
+export type MissedDoseEvent = {
+  id: string;
+  event_key: string;
+  source_type: "medicine" | "protocol_step";
+  medicine_id: string | null;
+  protocol_id: string | null;
+  protocol_name: string | null;
+  step_order: number | null;
+  medicine_name: string;
+  dosage: string;
+  time: string;
+  detected_at: string;
+  local_date: string;
+  member_id: string | null;
+  family_group_id: string;
 };
 
 export type MedicineInput = {

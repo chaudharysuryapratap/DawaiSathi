@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 
 import type {
   AttentionItem,
+  Account,
   Checkup,
   FamilyGroup,
   CheckupInput,
@@ -12,6 +13,7 @@ import type {
   Medicine,
   MedicineInput,
   Member,
+  MissedDoseEvent,
   NotificationPreference,
   ProtocolStepLog,
   TodayDose,
@@ -29,11 +31,29 @@ const configuredUrl =
       process.env.EXPO_BACKEND_URL ??
       process.env.EXPO_PUBLIC_BACKEND_URL;
 export const API_BASE_URL = `${configuredUrl?.replace(/\/$/, "") ?? ""}/api`;
+const API_ORIGIN = API_BASE_URL.replace(/\/api$/, "");
+let accessToken: string | null = null;
+
+export function resolveMediaUrl(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${API_ORIGIN}${url.startsWith("/") ? url : `/${url}`}`;
+}
+
+export function setAccessToken(token: string | null): void {
+  accessToken = token;
+}
+
+export function authHeaders(): Record<string, string> {
+  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers = new Headers(options?.headers);
+  headers.set("Content-Type", "application/json");
+  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers,
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -52,6 +72,32 @@ const query = (params: Record<string, string | number | null | undefined>) => {
 };
 
 export const api = {
+  register: (input: { name: string; email: string; password: string; bootstrap_token?: string; invitation_token?: string }) =>
+    request<{ access_token: string; user: Account }>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  login: (email: string, password: string) =>
+    request<{ access_token: string; user: Account }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  currentAccount: () => request<Account>("/auth/me"),
+  createFamilyInvitation: (familyGroupId: string, email: string) =>
+    request<{ email: string; family_group_id: string; token: string; expires_at: string }>(
+      `/family-groups/${encodeURIComponent(familyGroupId)}/invites`,
+      { method: "POST", body: JSON.stringify({ email }) },
+    ),
+  acceptFamilyInvitation: (token: string) =>
+    request<{ ok: boolean; family_group_id: string }>("/family-invitations/accept", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    }),
+  leaveFamilyGroup: (familyGroupId: string) =>
+    request<{ ok: boolean }>(
+      `/family-groups/${encodeURIComponent(familyGroupId)}/membership`,
+      { method: "DELETE" },
+    ),
   familyGroups: () => request<FamilyGroup[]>("/family-groups"),
   createFamilyGroup: (name: string) =>
     request<FamilyGroup>("/family-groups", { method: "POST", body: JSON.stringify({ name }) }),
@@ -82,6 +128,11 @@ export const api = {
     request<Medicine>("/medicines", { method: "POST", body: JSON.stringify(input) }),
   updateMedicine: (id: string, input: Partial<MedicineInput> & { active?: boolean }) =>
     request<Medicine>(`/medicines/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  uploadMedicineImage: (contentType: string, imageBase64: string) =>
+    request<{ image_url: string }>("/medicine-images", {
+      method: "POST",
+      body: JSON.stringify({ content_type: contentType, image_base64: imageBase64 }),
+    }),
   archiveMedicine: (id: string) =>
     request<{ ok: boolean }>(`/medicines/${id}`, { method: "DELETE" }),
   restoreMedicine: (id: string) =>
@@ -90,8 +141,16 @@ export const api = {
     request<Medicine>(`/medicines/${id}/refill${query({ quantity })}`, { method: "POST" }),
 
   today: (memberId?: string | null, familyGroupId?: string | null) =>
-    request<{ date: string; doses: TodayDose[]; protocols: TodayProtocol[] }>(
+    request<{ date: string; doses: TodayDose[]; protocols: TodayProtocol[]; missed_doses: MissedDoseEvent[] }>(
       `/today${query({ member_id: memberId ?? null, family_group_id: familyGroupId ?? null })}`,
+    ),
+  missedDoseHistory: (memberId?: string | null, familyGroupId?: string | null) =>
+    request<MissedDoseEvent[]>(
+      `/missed-doses/history${query({
+        member_id: memberId ?? null,
+        family_group_id: familyGroupId ?? null,
+        limit: 500,
+      })}`,
     ),
   logDose: (id: string, time: string) =>
     request<DoseLog>(`/medicines/${id}/dose`, {

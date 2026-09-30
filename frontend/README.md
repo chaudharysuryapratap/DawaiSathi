@@ -69,3 +69,43 @@ to a comma-separated list if the browser origin or port changes.
 Web storage persists in the browser using AsyncStorage's web implementation.
 Prescription camera capture requires a device camera and is not available in a
 desktop browser; browser-based prescription upload also remains a placeholder.
+
+### Local account setup
+
+The first account must be created by the local administrator with a one-time
+bootstrap token. Before starting the backend, add a random
+`DAWAISATHI_AUTH_SECRET` (at least 32 characters) and a random
+`DAWAISATHI_BOOTSTRAP_TOKEN` to `backend/.env`. Keep both values private; the
+bootstrap token is used only for the first owner registration. The owner
+registration claims existing unowned family groups by adding ownership and
+membership metadata; it does not rewrite medicines or dose logs.
+
+For example, from the repository root in PowerShell, generate and append the
+values once, then save the displayed bootstrap token for the first registration:
+
+```powershell
+$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+$secretBytes = New-Object byte[] 48
+$tokenBytes = New-Object byte[] 32
+$rng.GetBytes($secretBytes)
+$rng.GetBytes($tokenBytes)
+$authSecret = [Convert]::ToBase64String($secretBytes)
+$bootstrapToken = [Convert]::ToBase64String($tokenBytes)
+Add-Content backend\.env "DAWAISATHI_AUTH_SECRET=$authSecret"
+Add-Content backend\.env "DAWAISATHI_BOOTSTRAP_TOKEN=$bootstrapToken"
+Write-Host "One-time owner bootstrap token: $bootstrapToken"
+```
+
+The app stores the 24-hour bearer token in native secure storage and browser
+storage on web. The owner can create email-bound invitations from the family
+selector; tokens expire after seven days and are shared out of band. Existing
+accounts can join with a token in the family selector; new accounts register
+with that token. Family data and medicine images are scoped to group
+membership. Owners must transfer ownership before leaving a group.
+
+Medicine photos can be selected in the browser or on a device. The local
+backend accepts JPEG, PNG, and WebP files up to 5 MB and stores them under
+`backend/data/medicine-images` (or `DAWAISATHI_MEDIA_DIR` if configured). Back
+up this directory with the MongoDB data if medicine-photo retention is needed.
+The media directory is local backend storage, not cloud storage; use this
+development backend only on a trusted network.

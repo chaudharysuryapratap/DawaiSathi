@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
 
 import { AppHeader } from "@/src/components/app-header";
+import { useAuth } from "@/src/auth-context";
 import { LoadingState, ScreenShell } from "@/src/components/dawai-ui";
 import { api } from "@/src/api";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -57,8 +58,10 @@ function Row({
 export default function SettingsScreen() {
   const { colors } = useTheme();
   const styles = useStyles();
+  const { user, logout } = useAuth();
   const [preferences, setPreferences] = useState<NotificationPreference>(defaults);
   const [loading, setLoading] = useState(true);
+  const [authActionError, setAuthActionError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -96,9 +99,25 @@ export default function SettingsScreen() {
       ) : (
         <>
           <Group label="Account">
-            <Row icon="person-circle-outline" title="Profile" subtitle="Manage your DawaiSathi profile" testID="settings-profile" onPress={() => {}} />
-            <Row icon="key-outline" title="Authentication" subtitle="Google sign-in and secure login" testID="settings-auth" onPress={() => {}} />
-            <Row icon="log-out-outline" title="Log out" subtitle="Sign out on this device" testID="settings-logout" onPress={() => {}} />
+            <Row icon="person-circle-outline" title={user?.name ?? "Profile"} subtitle={user?.email} testID="settings-profile" />
+            <Row icon="key-outline" title="Authentication" subtitle="Email and password · private family access" testID="settings-auth" />
+            <Row
+              icon="log-out-outline"
+              title="Log out"
+              subtitle="Sign out on this device"
+              testID="settings-logout"
+              onPress={() => {
+                setAuthActionError(null);
+                void logout().catch((requestError) => {
+                  setAuthActionError(
+                    requestError instanceof Error ? requestError.message : "Could not sign out.",
+                  );
+                });
+              }}
+            />
+            {authActionError ? (
+              <Text style={{ color: colors.error, fontSize: 13 }}>{authActionError}</Text>
+            ) : null}
           </Group>
 
           <Group label="Notifications">

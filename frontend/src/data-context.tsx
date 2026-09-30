@@ -20,6 +20,7 @@ import type {
   Medicine,
   MedicineInput,
   Member,
+  MissedDoseEvent,
   ProtocolStepLog,
   TodayDose,
   TodayProtocol,
@@ -36,6 +37,7 @@ type DataContextValue = {
   setActiveFamilyGroup: (id: string | null) => void;
   createFamilyGroup: (name: string) => Promise<FamilyGroup>;
   renameFamilyGroup: (id: string, name: string) => Promise<void>;
+  leaveFamilyGroup: (id: string) => Promise<void>;
   members: Member[];
   activeMember: Member | null;
   activeMemberId: string | null;
@@ -48,6 +50,7 @@ type DataContextValue = {
   todayProtocols: TodayProtocol[];
   history: DoseLog[];
   protocolHistory: ProtocolStepLog[];
+  missedDoseHistory: MissedDoseEvent[];
   checkups: Checkup[];
   upcomingCheckup: Checkup | null;
   attention: AttentionItem[];
@@ -89,6 +92,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [todayProtocols, setTodayProtocols] = useState<TodayProtocol[]>([]);
   const [history, setHistory] = useState<DoseLog[]>([]);
   const [protocolHistory, setProtocolHistory] = useState<ProtocolStepLog[]>([]);
+  const [missedDoseHistory, setMissedDoseHistory] = useState<MissedDoseEvent[]>([]);
   const [checkups, setCheckups] = useState<Checkup[]>([]);
   const [upcomingCheckup, setUpcomingCheckup] = useState<Checkup | null>(null);
   const [attention, setAttention] = useState<AttentionItem[]>([]);
@@ -138,10 +142,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setCheckups(checkupList);
     setAttention(attentionData.items);
 
-    const [todayData, historyData, protocolHistoryData, upcoming] = await Promise.all([
+    const [todayData, historyData, protocolHistoryData, missedHistoryData, upcoming] = await Promise.all([
       api.today(nextMemberId, groupId),
       api.history({ memberId: nextMemberId, familyGroupId: groupId }),
       api.protocolHistory({ memberId: nextMemberId, familyGroupId: groupId }),
+      api.missedDoseHistory(nextMemberId, groupId),
       api.upcomingCheckup(nextMemberId, groupId),
     ]);
 
@@ -150,6 +155,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setTodayProtocols(todayData.protocols ?? []);
     setHistory(historyData);
     setProtocolHistory(protocolHistoryData);
+    setMissedDoseHistory(missedHistoryData);
     setUpcomingCheckup(upcoming);
   }, []);
 
@@ -183,6 +189,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         setTodayProtocols([]);
         setHistory([]);
         setProtocolHistory([]);
+        setMissedDoseHistory([]);
         setCheckups([]);
         setUpcomingCheckup(null);
         setAttention([]);
@@ -225,14 +232,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       api.today(activeMemberId, activeFamilyGroupId),
       api.history({ memberId: activeMemberId, familyGroupId: activeFamilyGroupId }),
       api.protocolHistory({ memberId: activeMemberId, familyGroupId: activeFamilyGroupId }),
+      api.missedDoseHistory(activeMemberId, activeFamilyGroupId),
       api.upcomingCheckup(activeMemberId, activeFamilyGroupId),
     ])
-      .then(([todayData, historyData, protocolHistoryData, upcoming]) => {
+      .then(([todayData, historyData, protocolHistoryData, missedHistoryData, upcoming]) => {
         if (cancelled) return;
         setTodayDoses(todayData.doses);
         setTodayProtocols(todayData.protocols ?? []);
         setHistory(historyData);
         setProtocolHistory(protocolHistoryData);
+        setMissedDoseHistory(missedHistoryData);
         setUpcomingCheckup(upcoming);
       })
       .catch((requestError) => {
@@ -276,6 +285,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       renameFamilyGroup: async (id, name) => {
         await runAndRefresh(() => api.renameFamilyGroup(id, name));
       },
+      leaveFamilyGroup: async (id) => {
+        await api.leaveFamilyGroup(id);
+        await refresh();
+      },
       members,
       activeMember,
       activeMemberId,
@@ -288,6 +301,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       todayProtocols,
       history,
       protocolHistory,
+      missedDoseHistory,
       checkups,
       upcomingCheckup,
       attention,
@@ -462,6 +476,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     todayProtocols,
     history,
     protocolHistory,
+    missedDoseHistory,
     checkups,
     upcomingCheckup,
     attention,

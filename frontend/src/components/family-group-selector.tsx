@@ -4,12 +4,15 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-
 
 import { BottomSheet } from "@/src/components/bottom-sheet";
 import { PrimaryButton } from "@/src/components/dawai-ui";
+import { api } from "@/src/api";
+import { useAuth } from "@/src/auth-context";
 import { useData } from "@/src/data-context";
 import { makeStyles, useTheme } from "@/src/theme";
 
 export function FamilyGroupSelector() {
   const { colors } = useTheme();
   const styles = useStyles();
+  const { user } = useAuth();
   const {
     familyGroups,
     activeFamilyGroup,
@@ -17,11 +20,17 @@ export function FamilyGroupSelector() {
     setActiveFamilyGroup,
     createFamilyGroup,
     renameFamilyGroup,
+    refresh,
   } = useData();
   const [open, setOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [renameValue, setRenameValue] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [invitingId, setInvitingId] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [joinToken, setJoinToken] = useState("");
+  const [joinMessage, setJoinMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,6 +61,40 @@ export function FamilyGroupSelector() {
       setRenameValue("");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Couldn’t rename family group");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitInvite = async () => {
+    if (!invitingId || !inviteEmail.trim()) return;
+    setBusy(true);
+    setError(null);
+    setInviteToken(null);
+    try {
+      const invitation = await api.createFamilyInvitation(invitingId, inviteEmail.trim());
+      setInviteToken(invitation.token);
+      setInviteEmail("");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Couldn’t create invitation");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitJoin = async () => {
+    if (!joinToken.trim()) return;
+    setBusy(true);
+    setError(null);
+    setJoinMessage(null);
+    try {
+      const joined = await api.acceptFamilyInvitation(joinToken.trim());
+      await refresh();
+      setActiveFamilyGroup(joined.family_group_id);
+      setJoinToken("");
+      setJoinMessage("You joined the family. Your view is switching now.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Couldn’t join this family");
     } finally {
       setBusy(false);
     }
@@ -88,8 +131,9 @@ export function FamilyGroupSelector() {
             const selected = group.id === activeFamilyGroupId;
             const editing = editingId === group.id;
             return (
-              <View key={group.id} style={styles.row}>
-                <Pressable
+              <View key={group.id} style={styles.groupWrap}>
+                <View style={styles.row}>
+                  <Pressable
                   testID={`family-group-${group.id}`}
                   onPress={() => {
                     setActiveFamilyGroup(group.id);
@@ -121,7 +165,7 @@ export function FamilyGroupSelector() {
                   {selected && !editing ? (
                     <Ionicons name="checkmark-circle" size={21} color={colors.brandPrimary} />
                   ) : null}
-                </Pressable>
+                  </Pressable>
 
                 {editing ? (
                   <View style={styles.actions}>
@@ -132,7 +176,7 @@ export function FamilyGroupSelector() {
                       <Ionicons name="close" size={16} color={colors.onSurfaceSecondary} />
                     </Pressable>
                   </View>
-                ) : (
+                ) : group.owner_user_id === user?.id ? (
                   <Pressable
                     testID={`family-group-edit-${group.id}`}
                     onPress={() => {
@@ -143,12 +187,77 @@ export function FamilyGroupSelector() {
                   >
                     <Ionicons name="pencil" size={15} color={colors.onSurfaceSecondary} />
                   </Pressable>
-                )}
+                ) : null}
+                {group.owner_user_id === user?.id && !editing ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Invite someone to ${group.name}`}
+                    testID={`family-group-invite-${group.id}`}
+                    onPress={() => {
+                      setInvitingId(invitingId === group.id ? null : group.id);
+                      setInviteToken(null);
+                      setInviteEmail("");
+                      setError(null);
+                    }}
+                    style={({ pressed }) => [styles.mini, pressed && styles.pressed]}
+                  >
+                    <Ionicons name="person-add-outline" size={16} color={colors.brandPrimary} />
+                  </Pressable>
+                ) : null}
+                </View>
+                {invitingId === group.id ? (
+                  <View style={styles.inviteCard}>
+                    <Text style={styles.createTitle}>Invite to {group.name}</Text>
+                    <TextInput
+                      accessibilityLabel="Invitee email address"
+                      testID="family-invite-email"
+                      value={inviteEmail}
+                      onChangeText={setInviteEmail}
+                      placeholder="family@example.com"
+                      placeholderTextColor={colors.muted}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      style={styles.input}
+                    />
+                    <PrimaryButton
+                      label={busy ? "Creating…" : "Create invitation"}
+                      onPress={submitInvite}
+                      disabled={busy || !inviteEmail.trim()}
+                      testID="family-invite-create"
+                    />
+                    {inviteToken ? (
+                      <Text selectable accessibilityLabel="Invitation token" style={styles.inviteCode}>
+                        Share this 7-day token with the invited person:{"\n"}{inviteToken}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
               </View>
             );
           })}
         </ScrollView>
 
+        <View style={styles.createCard}>
+          <Text style={styles.createTitle}>Join a family</Text>
+          <Text style={styles.detail}>Enter the invitation token shared with your account email.</Text>
+          <TextInput
+            accessibilityLabel="Family invitation token"
+            testID="family-invitation-token"
+            value={joinToken}
+            onChangeText={setJoinToken}
+            placeholder="Invitation token"
+            placeholderTextColor={colors.muted}
+            autoCapitalize="none"
+            style={styles.input}
+          />
+          <PrimaryButton
+            label={busy ? "Joining…" : "Join family"}
+            onPress={submitJoin}
+            disabled={busy || !joinToken.trim()}
+            testID="family-invitation-accept"
+          />
+          {joinMessage ? <Text style={styles.success}>{joinMessage}</Text> : null}
+        </View>
 
         <View style={styles.createCard}>
           <Text style={styles.createTitle}>Write your family group name</Text>
@@ -181,6 +290,7 @@ const useStyles = makeStyles((colors) =>
     },
     selectorLabel: { color: colors.onSurface, fontSize: 24, fontWeight: "800", letterSpacing: -0.3, flexShrink: 1 },
     list: { gap: 8 },
+    groupWrap: { gap: 8 },
     row: { flexDirection: "row", alignItems: "center", gap: 8 },
     rowMain: {
       flex: 1,
@@ -226,6 +336,22 @@ const useStyles = makeStyles((colors) =>
       gap: 10,
       marginTop: 4,
     },
+    inviteCard: {
+      flexBasis: "100%",
+      borderRadius: 16,
+      backgroundColor: colors.surfaceSecondary,
+      padding: 14,
+      gap: 10,
+    },
+    inviteCode: {
+      padding: 12,
+      borderRadius: 12,
+      backgroundColor: colors.surfaceTertiary,
+      color: colors.onSurface,
+      fontSize: 13,
+      lineHeight: 20,
+    },
+    success: { color: colors.success, fontSize: 13, fontWeight: "700" },
     createTitle: { color: colors.onSurface, fontSize: 14, fontWeight: "800" },
     input: {
       minHeight: 48,

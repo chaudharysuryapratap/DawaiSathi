@@ -7,6 +7,26 @@ $logDirectory = Join-Path $stateDirectory "logs"
 $stateFile = Join-Path $stateDirectory "launcher-processes.json"
 New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
 
+$backendEnvPath = Join-Path $root "backend\.env"
+$backendEnvText = if (Test-Path $backendEnvPath) { Get-Content -Raw $backendEnvPath } else { "" }
+function Get-BackendSetting([string]$name) {
+    $processValue = [Environment]::GetEnvironmentVariable($name, "Process")
+    if (-not [string]::IsNullOrWhiteSpace($processValue)) {
+        return $processValue
+    }
+    $match = [regex]::Match($backendEnvText, "(?m)^$([regex]::Escape($name))=(.+)$")
+    if ($match.Success) {
+        return $match.Groups[1].Value.Trim()
+    }
+    return ""
+}
+
+$authSecret = Get-BackendSetting "DAWAISATHI_AUTH_SECRET"
+$bootstrapToken = Get-BackendSetting "DAWAISATHI_BOOTSTRAP_TOKEN"
+if ($authSecret.Length -lt 32 -or $bootstrapToken.Length -lt 20) {
+    throw "Configure DAWAISATHI_AUTH_SECRET (at least 32 characters) and DAWAISATHI_BOOTSTRAP_TOKEN in backend\.env before starting. See the Local account setup section in frontend\README.md."
+}
+
 if (Test-Path $stateFile) {
     $script:trackedProcesses = @(Get-Content -Raw $stateFile | ConvertFrom-Json)
 } else {
@@ -109,7 +129,23 @@ if (-not $backendPortOwner) {
     Write-Host "Backend is already listening on port 8000 (PID $backendPortOwner); leaving it untouched."
 }
 
-$webPortOwner = Get-ListeningProcessId 8081
+$webPort = 8081
+$webPortOwner = Get-ListeningProcessId $webPort
+if ($webPortOwner) {
+    $webProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $webPortOwner"
+    if ($webProcess.CommandLine -notmatch "expo") {
+        throw "Port $webPort is already used by PID $webPortOwner, which is not an Expo process. Stop that service or configure Expo to use a different port."
+    }
+    if ($webProcess.CommandLine -notmatch "--web") {
+        $webPort = 8082
+        $webPortOwner = Get-ListeningProcessId $webPort
+        if ($webPortOwner) {
+            throw "Port 8081 has a non-web Expo process and fallback port $webPort is occupied. Stop one of those services or configure Expo to use another port."
+        }
+        Write-Host "Port 8081 has a non-web Expo process; leaving it untouched and using port $webPort for Expo Web."
+    }
+}
+
 if (-not $webPortOwner) {
     $node = (Get-Command node.exe -ErrorAction Stop).Source
     $expoCli = Join-Path $root "frontend\node_modules\expo\bin\cli"
@@ -119,26 +155,22 @@ if (-not $webPortOwner) {
     Start-TrackedProcess `
         "expo-web" `
         $node `
-        "`"$expoCli`" start --web --host 0.0.0.0 --port 8081" `
+        "`"$expoCli`" start --web --host 0.0.0.0 --port $webPort" `
         (Join-Path $root "frontend") `
-        8081 `
+        $webPort `
         "$expoCli"
 } else {
-    $webProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $webPortOwner"
-    if ($webProcess.CommandLine -notmatch "expo") {
-        throw "Port 8081 is already used by PID $webPortOwner, which is not an Expo process. Stop that service or configure Expo to use a different port."
-    }
-    Write-Host "Expo is already listening on port 8081 (PID $webPortOwner); leaving it untouched."
+    Write-Host "Expo Web is already listening on port $webPort (PID $webPortOwner); leaving it untouched."
 }
 
 try {
-    $health = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/" -TimeoutSec 5
-    Write-Host "Backend health: $($health.message)"
+    $health = Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -TimeoutSec 5
+    Write-Host "Backend health: $($health.status)"
 } catch {
     throw "The backend port is open but its health endpoint failed: $($_.Exception.Message)"
 }
 
-$url = "http://localhost:8081"
+$url = "http://localhost:$webPort"
 Write-Host "DawaiSathi Web: $url"
 Write-Host "Logs: $logDirectory"
 if (-not $NoOpenBrowser) {

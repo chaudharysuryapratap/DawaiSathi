@@ -1,10 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PrimaryButton } from "@/src/components/dawai-ui";
+import { api, authHeaders, resolveMediaUrl } from "@/src/api";
 import { useData } from "@/src/data-context";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -25,6 +28,43 @@ export default function AddMedicineScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const styles = useStyles();
+  const photoStyles = useMemo(
+    () =>
+      StyleSheet.create({
+        field: { gap: 8 },
+        label: { color: colors.onSurface, fontSize: 14, fontWeight: "700" },
+        imagePreview: {
+          width: "100%",
+          height: 180,
+          borderRadius: 16,
+          backgroundColor: colors.surfaceTertiary,
+        },
+        imagePlaceholder: {
+          height: 112,
+          borderRadius: 16,
+          backgroundColor: colors.surfaceSecondary,
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+        },
+        imagePlaceholderText: { color: colors.muted, fontSize: 13 },
+        imageButtons: { flexDirection: "row", alignItems: "center", gap: 12 },
+        imageButton: {
+          minHeight: 44,
+          borderRadius: 12,
+          backgroundColor: colors.brandTertiary,
+          paddingHorizontal: 14,
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        imageButtonText: { color: colors.brandPrimary, fontSize: 14, fontWeight: "800" },
+        imageRemoveButton: { minHeight: 44, justifyContent: "center", paddingHorizontal: 10 },
+        imageRemoveText: { color: colors.error, fontSize: 14, fontWeight: "700" },
+        pressed: { opacity: 0.8, transform: [{ scale: 0.98 }] },
+        helper: { color: colors.muted, fontSize: 12 },
+      }),
+    [colors],
+  );
   const { id } = useLocalSearchParams<{ id?: string }>();
   const { medicines, members, activeMemberId, addMedicine, updateMedicine, archiveMedicine } = useData();
   const existing = useMemo(() => medicines.find((medicine) => medicine.id === id), [id, medicines]);
@@ -37,6 +77,11 @@ export default function AddMedicineScreen() {
   const [instructions, setInstructions] = useState("");
   const [quantity, setQuantity] = useState("");
   const [identification, setIdentification] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [selectedImage, setSelectedImage] = useState<{
+    base64: string;
+    contentType: string;
+  } | null>(null);
   const [memberId, setMemberId] = useState<string | null>(activeMemberId);
   const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
   const [saving, setSaving] = useState(false);
@@ -51,6 +96,7 @@ export default function AddMedicineScreen() {
     setInstructions(existing.instructions);
     setQuantity(String(existing.quantity_total || ""));
     setIdentification(existing.identification_cue || "");
+    setImageUrl(existing.image_url || "");
     setMemberId(existing.member_id ?? null);
     setDays(existing.days?.length ? existing.days : [0, 1, 2, 3, 4, 5, 6]);
   }, [existing]);
@@ -68,6 +114,27 @@ export default function AddMedicineScreen() {
   const toggleDay = (day: number) =>
     setDays((current) => (current.includes(day) ? current.filter((value) => value !== day) : [...current, day]));
 
+  const chooseImage = async () => {
+    setError(null);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        quality: 0.8,
+        base64: true,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (!asset?.base64 || !asset.mimeType) {
+        setError("Could not read that photo. Choose a JPEG, PNG, or WebP image.");
+        return;
+      }
+      setSelectedImage({ base64: asset.base64, contentType: asset.mimeType });
+    } catch (pickerError) {
+      setError(pickerError instanceof Error ? pickerError.message : "Could not open the photo library.");
+    }
+  };
+
   const save = async () => {
     if (!name.trim() || !dosage.trim() || times.length === 0) {
       setError("Add a medicine name, dosage, and at least one reminder time.");
@@ -80,6 +147,9 @@ export default function AddMedicineScreen() {
     setSaving(true);
     setError(null);
     try {
+      const savedImageUrl = selectedImage
+        ? (await api.uploadMedicineImage(selectedImage.contentType, selectedImage.base64)).image_url
+        : imageUrl;
       const input = {
         name: name.trim(),
         dosage: dosage.trim(),
@@ -88,6 +158,7 @@ export default function AddMedicineScreen() {
         instructions: instructions.trim(),
         quantity_total: Number(quantity) || 0,
         identification_cue: identification.trim(),
+        image_url: savedImageUrl,
         member_id: memberId,
         days,
       };
@@ -133,6 +204,58 @@ export default function AddMedicineScreen() {
 
         <Field label="Medicine name" value={name} onChangeText={setName} placeholder="e.g. Vitamin D" autoCapitalize="words" testID="medicine-name-input" />
         <Field label="Dosage" value={dosage} onChangeText={setDosage} placeholder="e.g. 1 tablet" testID="medicine-dosage-input" />
+
+        <View style={photoStyles.field}>
+          <Text style={photoStyles.label}>Medicine photo</Text>
+          {selectedImage || imageUrl ? (
+            <Image
+              accessibilityLabel={`${name || "Medicine"} photo preview`}
+              source={{
+                uri: selectedImage
+                  ? `data:${selectedImage.contentType};base64,${selectedImage.base64}`
+                  : resolveMediaUrl(imageUrl),
+                headers: selectedImage ? undefined : authHeaders(),
+              }}
+              contentFit="cover"
+              style={photoStyles.imagePreview}
+            />
+          ) : (
+            <View style={photoStyles.imagePlaceholder}>
+              <Ionicons name="image-outline" size={26} color={colors.muted} />
+              <Text style={photoStyles.imagePlaceholderText}>Add an optional photo</Text>
+            </View>
+          )}
+          <View style={photoStyles.imageButtons}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Choose medicine photo"
+              testID="medicine-photo-choose"
+              disabled={saving}
+              onPress={() => void chooseImage()}
+              style={({ pressed }) => [photoStyles.imageButton, pressed && photoStyles.pressed]}
+            >
+              <Text style={photoStyles.imageButtonText}>
+                {selectedImage || imageUrl ? "Change photo" : "Choose photo"}
+              </Text>
+            </Pressable>
+            {selectedImage || imageUrl ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Remove medicine photo"
+                testID="medicine-photo-remove"
+                disabled={saving}
+                onPress={() => {
+                  setImageUrl("");
+                  setSelectedImage(null);
+                }}
+                style={({ pressed }) => [photoStyles.imageRemoveButton, pressed && photoStyles.pressed]}
+              >
+                <Text style={photoStyles.imageRemoveText}>Remove</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          <Text style={photoStyles.helper}>JPEG, PNG, or WebP, up to 5 MB. Stored with your local backend.</Text>
+        </View>
 
         <View style={styles.field}>
           <Text style={styles.label}>Who is this for?</Text>

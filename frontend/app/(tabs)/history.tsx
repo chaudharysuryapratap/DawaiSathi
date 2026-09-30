@@ -7,7 +7,7 @@ import { ErrorState, LoadingState, ScreenShell } from "@/src/components/dawai-ui
 import { useData } from "@/src/data-context";
 import { formatIsoDate, formatTime } from "@/src/dose-status";
 import { makeStyles, useTheme } from "@/src/theme";
-import type { DoseLog, ProtocolStepLog } from "@/src/types";
+import type { DoseLog, MissedDoseEvent, ProtocolStepLog } from "@/src/types";
 
 const STATUS_FILTERS = ["all", "taken", "missed"] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
@@ -20,21 +20,36 @@ const RANGES = [
 
 type Range = (typeof RANGES)[number]["id"];
 
+const HISTORY_REFERENCE_TIME = Date.now();
+
 type DayEntry =
   | { kind: "dose"; time: string; log: DoseLog }
-  | { kind: "protocol"; time: string; protocolId: string; protocolName: string; steps: ProtocolStepLog[] };
+  | { kind: "protocol"; time: string; protocolId: string; protocolName: string; steps: ProtocolStepLog[] }
+  | { kind: "missed"; time: string; event: MissedDoseEvent };
 
-function groupDay(doses: DoseLog[], protocolLogs: ProtocolStepLog[]): [string, DayEntry[]][] {
-  const dayMap = new Map<string, { doses: DoseLog[]; protocolSteps: ProtocolStepLog[] }>();
+function groupDay(
+  doses: DoseLog[],
+  protocolLogs: ProtocolStepLog[],
+  missedEvents: MissedDoseEvent[],
+): [string, DayEntry[]][] {
+  const dayMap = new Map<
+    string,
+    { doses: DoseLog[]; protocolSteps: ProtocolStepLog[]; missedEvents: MissedDoseEvent[] }
+  >();
   doses.forEach((log) => {
-    const bucket = dayMap.get(log.local_date) ?? { doses: [], protocolSteps: [] };
+    const bucket = dayMap.get(log.local_date) ?? { doses: [], protocolSteps: [], missedEvents: [] };
     bucket.doses.push(log);
     dayMap.set(log.local_date, bucket);
   });
   protocolLogs.forEach((log) => {
-    const bucket = dayMap.get(log.local_date) ?? { doses: [], protocolSteps: [] };
+    const bucket = dayMap.get(log.local_date) ?? { doses: [], protocolSteps: [], missedEvents: [] };
     bucket.protocolSteps.push(log);
     dayMap.set(log.local_date, bucket);
+  });
+  missedEvents.forEach((event) => {
+    const bucket = dayMap.get(event.local_date) ?? { doses: [], protocolSteps: [], missedEvents: [] };
+    bucket.missedEvents.push(event);
+    dayMap.set(event.local_date, bucket);
   });
   const days: [string, DayEntry[]][] = [];
   Array.from(dayMap.entries())
@@ -61,6 +76,9 @@ function groupDay(doses: DoseLog[], protocolLogs: ProtocolStepLog[]): [string, D
           steps: value.steps,
         });
       });
+      bucket.missedEvents.forEach((event) => {
+        entries.push({ kind: "missed", time: event.time, event });
+      });
       entries.sort((a, b) => (a.time < b.time ? -1 : 1));
       days.push([date, entries]);
     });
@@ -73,6 +91,7 @@ export default function HistoryScreen() {
   const {
     history,
     protocolHistory,
+    missedDoseHistory,
     todayDoses,
     medicines,
     protocols,
@@ -91,9 +110,8 @@ export default function HistoryScreen() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const cutoff = useMemo(() => {
-    const now = Date.now();
-    if (range === "7") return now - 7 * 24 * 60 * 60 * 1000;
-    if (range === "30") return now - 30 * 24 * 60 * 60 * 1000;
+    if (range === "7") return HISTORY_REFERENCE_TIME - 7 * 24 * 60 * 60 * 1000;
+    if (range === "30") return HISTORY_REFERENCE_TIME - 30 * 24 * 60 * 60 * 1000;
     return 0;
   }, [range]);
 
@@ -119,15 +137,31 @@ export default function HistoryScreen() {
     [protocolHistory, cutoff, medicineFilter],
   );
 
-  const missedDoses = useMemo(() => todayDoses.filter((dose) => !dose.logged_at).length, [todayDoses]);
+  const filteredMissedEvents = useMemo(
+    () =>
+      missedDoseHistory.filter((event) => {
+        const eventDate = new Date(`${event.local_date}T00:00:00`).getTime();
+        if (cutoff && eventDate < cutoff) return false;
+        if (medicineFilter === "protocols") return event.source_type === "protocol_step";
+        if (medicineFilter !== "all") return event.medicine_id === medicineFilter;
+        return true;
+      }),
+    [missedDoseHistory, cutoff, medicineFilter],
+  );
+
+  const missedDoses = filteredMissedEvents.length;
+  const pendingToday = todayDoses.filter((dose) => !dose.logged_at).length;
   const takenDoses = filteredDoses.length + filteredProtocolLogs.length;
   const totalDoses = takenDoses + missedDoses;
   const adherence = totalDoses ? Math.round((takenDoses / totalDoses) * 100) : 0;
 
   const grouped = useMemo(() => {
-    if (statusFilter === "missed") return [] as [string, DayEntry[]][];
-    return groupDay(filteredDoses, filteredProtocolLogs);
-  }, [filteredDoses, filteredProtocolLogs, statusFilter]);
+    return groupDay(
+      statusFilter === "missed" ? [] : filteredDoses,
+      statusFilter === "missed" ? [] : filteredProtocolLogs,
+      statusFilter === "taken" ? [] : filteredMissedEvents,
+    );
+  }, [filteredDoses, filteredProtocolLogs, filteredMissedEvents, statusFilter]);
 
   const medicineName =
     medicineFilter === "all"
@@ -159,7 +193,7 @@ export default function HistoryScreen() {
             <View style={{ flex: 1, gap: 4 }}>
               <Text style={styles.adherencePercent}>{adherence}% adherence</Text>
               <Text style={styles.adherenceMeta}>
-                {takenDoses} taken · {missedDoses} pending today
+                {takenDoses} taken · {missedDoses} missed · {pendingToday} pending today
               </Text>
             </View>
             <View style={styles.adherenceRing}>
@@ -235,19 +269,46 @@ export default function HistoryScreen() {
               />
             ))}
           </ScrollView>
+          <Text style={styles.captureNote}>
+            Misses are saved after a dose is 3 hours overdue while DawaiSathi is open. No earlier dates are backfilled.
+          </Text>
 
           {grouped.length === 0 ? (
             <View style={styles.empty}>
-              <Ionicons name="time-outline" size={30} color={colors.muted} />
-              <Text style={styles.emptyTitle}>Nothing to show yet</Text>
-              <Text style={styles.emptyText}>Log a dose or adjust the filters to see history here.</Text>
+              <Ionicons name={statusFilter === "missed" ? "checkmark-circle-outline" : "time-outline"} size={30} color={colors.muted} />
+              <Text style={styles.emptyTitle}>
+                {statusFilter === "missed" ? "No missed doses in this range" : "Nothing to show yet"}
+              </Text>
+              <Text style={styles.emptyText}>
+                {statusFilter === "missed"
+                  ? "Missed-dose history begins from the tracking rollout; earlier dates are not reconstructed."
+                  : "Log a dose or adjust the filters to see history here."}
+              </Text>
             </View>
           ) : (
             grouped.map(([date, entries]) => (
               <View key={date} style={styles.day}>
-                <Text style={styles.dayTitle}>{formatIsoDate(entries[0].kind === "dose" ? entries[0].log.logged_at : entries[0].steps[0].logged_at)}</Text>
+                <Text style={styles.dayTitle}>{formatIsoDate(`${date}T12:00:00`)}</Text>
                 <View style={styles.dayList}>
                   {entries.map((entry) => {
+                    if (entry.kind === "missed") {
+                      const label =
+                        entry.event.source_type === "protocol_step"
+                          ? `${entry.event.protocol_name} · step ${entry.event.step_order}`
+                          : entry.event.medicine_name;
+                      return (
+                        <View key={entry.event.id} testID={`history-missed-${entry.event.id}`} style={styles.dayRow}>
+                          <View style={styles.missedCheck}>
+                            <Ionicons name="close" size={13} color={colors.onError} />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.dayMedicine}>{label}</Text>
+                            <Text style={styles.dayMeta}>Missed · {entry.event.dosage}</Text>
+                          </View>
+                          <Text style={styles.dayTime}>{formatTime(entry.event.time)}</Text>
+                        </View>
+                      );
+                    }
                     if (entry.kind === "protocol") {
                       const key = `${date}-${entry.protocolId}`;
                       const isOpen = !!expanded[key];
@@ -363,6 +424,7 @@ const useStyles = makeStyles((colors) =>
     },
     adherencePercent: { color: colors.brandPrimary, fontSize: 24, fontWeight: "800" },
     adherenceMeta: { color: colors.onSurfaceSecondary, fontSize: 13 },
+    captureNote: { color: colors.muted, fontSize: 12, lineHeight: 18 },
     adherenceRing: {
       width: 70,
       height: 70,
@@ -414,6 +476,14 @@ const useStyles = makeStyles((colors) =>
       height: 26,
       borderRadius: 13,
       backgroundColor: colors.success,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    missedCheck: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: colors.error,
       alignItems: "center",
       justifyContent: "center",
     },

@@ -1,8 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { authHeaders, resolveMediaUrl } from "@/src/api";
 import { BottomSheet } from "@/src/components/bottom-sheet";
 import { PrimaryButton } from "@/src/components/dawai-ui";
 import { StatusPill } from "@/src/components/status-pill";
@@ -139,6 +141,17 @@ export function MedicineDetailSheet({ visible, onClose, dose }: Props) {
       footer={footer}
       testID="medicine-detail-sheet"
     >
+      {medicine?.image_url || dose.image_url ? (
+        <Image
+          accessibilityLabel={`${dose.medicine_name} photo`}
+          source={{
+            uri: resolveMediaUrl(medicine?.image_url || dose.image_url),
+            headers: authHeaders(),
+          }}
+          contentFit="cover"
+          style={styles.medicineImage}
+        />
+      ) : null}
       <View style={styles.head}>
         <View style={styles.headIcon}>
           <Ionicons name="medical" size={24} color={colors.brandPrimary} />
@@ -201,6 +214,7 @@ function MetaBlock({ label, value }: { label: string; value: string }) {
 
 const useStyles = makeStyles((colors) =>
   StyleSheet.create({
+    medicineImage: { width: "100%", height: 176, borderRadius: 16, backgroundColor: colors.surfaceTertiary },
     head: { flexDirection: "row", alignItems: "center", gap: 14 },
     headIcon: {
       width: 52,

@@ -1,22 +1,43 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useAuth } from "@/src/auth-context";
+import { useData } from "@/src/data-context";
 import { makeStyles, useTheme } from "@/src/theme";
 
 const CAPABILITIES = [
-  { icon: "person-add-outline", title: "Invite members", detail: "Share a code or link to invite a family member." },
-  { icon: "shield-checkmark-outline", title: "Roles & permissions", detail: "Choose who can add, edit, or only view." },
-  { icon: "mail-open-outline", title: "Join requests", detail: "Approve or reject requests to join your family." },
-  { icon: "swap-horizontal-outline", title: "Switch families", detail: "Move between families you belong to." },
-  { icon: "trash-outline", title: "Leave or remove", detail: "Leave a family or delete one you created." },
+  { icon: "person-add-outline", title: "Invite members", detail: "Owners can create email-bound, 7-day invitation tokens from the family selector." },
+  { icon: "swap-horizontal-outline", title: "Switch families", detail: "Use the family selector beneath the family name on Today." },
 ] as const;
 
 export default function FamilyManagementScreen() {
   const insets = useSafeAreaInsets();
   const styles = useStyles();
   const { colors } = useTheme();
+  const { user } = useAuth();
+  const { activeFamilyGroup, leaveFamilyGroup } = useData();
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isOwner = activeFamilyGroup?.owner_user_id === user?.id;
+
+  const leave = async () => {
+    if (!activeFamilyGroup || isOwner) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await leaveFamilyGroup(activeFamilyGroup.id);
+      setConfirmLeave(false);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not leave this family.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <View style={styles.root}>
       <Stack.Screen options={{ title: "Family management" }} />
@@ -24,9 +45,54 @@ export default function FamilyManagementScreen() {
         <Text style={styles.eyebrow}>FAMILY MANAGEMENT</Text>
         <Text style={styles.title}>Manage your family</Text>
         <Text style={styles.subtitle}>
-          Family, roles, invitations, and join requests all live here. Existing DawaiSathi family features
-          plug into this shell as they roll out.
+          Your family groups and invitations are protected by your signed-in account.
         </Text>
+        {activeFamilyGroup ? (
+          <View style={styles.currentGroup}>
+            <Text style={styles.groupLabel}>CURRENT FAMILY</Text>
+            <Text style={styles.groupName}>{activeFamilyGroup.name}</Text>
+            <Text style={styles.rowDetail}>
+              {isOwner ? "You are the owner." : "You joined with an invitation."}
+            </Text>
+            {isOwner ? (
+              <Text style={styles.rowDetail}>Transfer ownership before leaving this family.</Text>
+            ) : confirmLeave ? (
+              <View style={styles.confirmArea}>
+                <Text style={styles.rowDetail}>
+                  You will lose access. The family’s medicines and history will remain with the family.
+                </Text>
+                <View style={styles.leaveActions}>
+                  <Pressable
+                    accessibilityRole="button"
+                    testID="family-leave-confirm"
+                    disabled={busy}
+                    onPress={() => void leave()}
+                    style={({ pressed }) => [styles.leaveButton, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.leaveButtonText}>{busy ? "Leaving…" : "Confirm leave"}</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => setConfirmLeave(false)}
+                    style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                testID="family-leave"
+                onPress={() => setConfirmLeave(true)}
+                style={({ pressed }) => [styles.leaveButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.leaveButtonText}>Leave this family</Text>
+              </Pressable>
+            )}
+            {error ? <Text accessibilityLiveRegion="assertive" style={styles.error}>{error}</Text> : null}
+          </View>
+        ) : null}
         <View style={styles.list}>
           {CAPABILITIES.map((item) => (
             <View key={item.title} style={styles.row}>
@@ -53,6 +119,24 @@ const useStyles = makeStyles((colors) =>
     title: { color: colors.onSurface, fontSize: 24, fontWeight: "800" },
     subtitle: { color: colors.muted, fontSize: 14, lineHeight: 20 },
     list: { gap: 8 },
+    currentGroup: { padding: 16, gap: 8, borderRadius: 18, backgroundColor: colors.surfaceSecondary },
+    groupLabel: { color: colors.muted, fontSize: 11, fontWeight: "800", letterSpacing: 1 },
+    groupName: { color: colors.onSurface, fontSize: 18, fontWeight: "800" },
+    confirmArea: { gap: 10, marginTop: 4 },
+    leaveActions: { flexDirection: "row", gap: 8 },
+    leaveButton: {
+      minHeight: 44,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      backgroundColor: colors.error,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    leaveButtonText: { color: colors.onError, fontSize: 14, fontWeight: "800" },
+    cancelButton: { minHeight: 44, paddingHorizontal: 14, justifyContent: "center" },
+    cancelButtonText: { color: colors.onSurfaceSecondary, fontSize: 14, fontWeight: "700" },
+    error: { color: colors.error, fontSize: 13 },
+    pressed: { opacity: 0.78 },
     row: {
       minHeight: 72,
       flexDirection: "row",
