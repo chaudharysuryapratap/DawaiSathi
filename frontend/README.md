@@ -71,6 +71,10 @@ AsyncStorage's web implementation. Browser storage is accessible to JavaScript
 running on this origin and does not provide the same protection as the native
 iOS Keychain or Android encrypted storage. Use a trusted browser profile, keep
 the app protected against cross-site scripting, and sign out on shared devices.
+Because browser tokens are available to same-origin JavaScript and are not
+`HttpOnly`, localStorage is a convenience for local use, not equivalent to
+native secure storage; use a server-managed `HttpOnly` session for deployments
+that need stronger browser token isolation.
 Prescription camera capture requires a device camera and is not available in a
 desktop browser; browser-based prescription upload also remains a placeholder.
 

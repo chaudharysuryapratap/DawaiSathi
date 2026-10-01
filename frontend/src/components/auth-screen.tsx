@@ -4,6 +4,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { PrimaryButton } from "@/src/components/dawai-ui";
 import { useAuth } from "@/src/auth-context";
 import { useTheme } from "@/src/theme";
+import { getErrorMessage } from "@/src/utils/error-message";
 
 export function AuthScreen() {
   const { colors } = useTheme();
@@ -33,7 +34,7 @@ export function AuthScreen() {
         await login(email.trim(), password);
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not complete sign-in.");
+      setError(getErrorMessage(requestError, "Could not complete sign-in."));
     } finally {
       setBusy(false);
     }

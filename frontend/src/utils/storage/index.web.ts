@@ -1,5 +1,5 @@
 // Web storage (Metro picks index.ts on native).
-// General helpers use AsyncStorage's localStorage shim; secure methods use localStorage directly
+// General helpers use AsyncStorage's web implementation; secure methods use localStorage directly
 // so browser access failures are preserved and can be reported instead of converted to `false`.
 // Values supported: string | number | boolean | null (JSON-serialized on disk).
 // Usage: import { storage } from "@/src/utils/storage"; await storage.getItem(key, fallback);
@@ -47,7 +47,7 @@ export class Storage extends StorageBase {
     }
   }
 
-  // Browsers have no Keychain — secure* helpers fall through to AsyncStorage.
+  // Browsers have no Keychain — secure* helpers use localStorage and surface access failures.
   async secureGet<Fallback extends StorageItemValue>(
     key: string,
     fallback: Fallback,

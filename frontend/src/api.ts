@@ -19,6 +19,7 @@ import type {
   TodayDose,
   TodayProtocol,
 } from "./types";
+import { sanitizeErrorMessage } from "./utils/error-message";
 
 type ExpoConfig = { extra?: { backendUrl?: string; backendUrlWeb?: string } };
 const config = Constants.expoConfig as ExpoConfig | null;
@@ -58,7 +59,7 @@ export class ApiRequestError extends Error {
 }
 
 function formatErrorDetail(value: unknown): string | null {
-  if (typeof value === "string") return value.trim() || null;
+  if (typeof value === "string") return sanitizeErrorMessage(value) || null;
   if (Array.isArray(value)) {
     const messages = value.map(formatErrorDetail).filter((message): message is string => !!message);
     return messages.length ? messages.join("; ") : null;
@@ -68,16 +69,26 @@ function formatErrorDetail(value: unknown): string | null {
   const detail = value as Record<string, unknown>;
   if (typeof detail.msg === "string") {
     const location = Array.isArray(detail.loc)
-      ? detail.loc.filter((part) => typeof part === "string" && part !== "body").join(" ")
+      ? detail.loc
+          .filter(
+            (part): part is string | number =>
+              (typeof part === "string" || typeof part === "number") && part !== "body",
+          )
+          .map(String)
+          .join(" ")
       : "";
-    return location ? `${location}: ${detail.msg}` : detail.msg;
+    const message = sanitizeErrorMessage(detail.msg) || null;
+    return message ? (location ? `${location}: ${message}` : message) : null;
   }
-  if (typeof detail.message === "string") return detail.message;
-  return null;
+  return (
+    formatErrorDetail(detail.message) ??
+    formatErrorDetail(detail.detail) ??
+    formatErrorDetail(detail.error)
+  );
 }
 
 function apiErrorMessage(body: unknown): string | null {
-  if (typeof body === "string") return body.trim() || null;
+  if (typeof body === "string") return sanitizeErrorMessage(body) || null;
   if (!body || typeof body !== "object") return null;
   const payload = body as Record<string, unknown>;
   return (
@@ -97,11 +108,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       ...options,
       headers,
     });
-  } catch (error) {
-    if (__DEV__) console.warn("[api] Backend request failed; credentials and tokens were not logged.", error);
+  } catch {
     throw new Error("Could not reach the DawaiSathi server. Check that it is running and try again.");
   }
-  const text = await response.text();
+  let text: string;
+  try {
+    text = await response.text();
+  } catch {
+    throw new Error("Could not read the response from the DawaiSathi server. Try again.");
+  }
   let body: unknown = null;
   if (text) {
     try {

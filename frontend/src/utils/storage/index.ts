@@ -68,6 +68,7 @@ export class Storage extends StorageBase {
     fallback: Fallback,
   ): Promise<Fallback | null> {
     try {
+      this.validateSecureKey(key);
       const raw = await SecureStore.getItemAsync(key);
       return this.retrieve(raw, fallback);
     } catch (e) {
@@ -80,6 +81,7 @@ export class Storage extends StorageBase {
     value: Value,
   ): Promise<boolean> {
     try {
+      this.validateSecureKey(key);
       await SecureStore.setItemAsync(key, JSON.stringify(value));
       return true;
     } catch (e) {
@@ -89,6 +91,7 @@ export class Storage extends StorageBase {
 
   async secureRemove(key: string): Promise<boolean> {
     try {
+      this.validateSecureKey(key);
       await SecureStore.deleteItemAsync(key);
       return true;
     } catch (e) {
