@@ -2,11 +2,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { PrimaryButton } from "@/src/components/dawai-ui";
+import { LoadingState, PrimaryButton } from "@/src/components/dawai-ui";
 import { api, authHeaders, resolveMediaUrl } from "@/src/api";
 import { useData } from "@/src/data-context";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -23,7 +23,21 @@ const WEEKDAYS = [
   { id: 6, label: "Sun" },
 ];
 
+type Medicine = ReturnType<typeof useData>["medicines"][number];
+
 export default function AddMedicineScreen() {
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { medicines, loading } = useData();
+  const existing = medicines.find((medicine) => medicine.id === id);
+
+  if (id && loading && !existing) {
+    return <LoadingState label="Loading medicine" />;
+  }
+
+  return <AddMedicineForm existing={existing} />;
+}
+
+function AddMedicineForm({ existing }: { existing: Medicine | undefined }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -65,41 +79,25 @@ export default function AddMedicineScreen() {
       }),
     [colors],
   );
-  const { id } = useLocalSearchParams<{ id?: string }>();
-  const { medicines, members, activeMemberId, addMedicine, updateMedicine, archiveMedicine } = useData();
-  const existing = useMemo(() => medicines.find((medicine) => medicine.id === id), [id, medicines]);
+  const { members, activeMemberId, addMedicine, updateMedicine, archiveMedicine } = useData();
 
-  const [name, setName] = useState("");
-  const [dosage, setDosage] = useState("");
-  const [frequency, setFrequency] = useState("Daily");
-  const [times, setTimes] = useState<string[]>(["08:00"]);
+  const [name, setName] = useState(existing?.name ?? "");
+  const [dosage, setDosage] = useState(existing?.dosage ?? "");
+  const [frequency, setFrequency] = useState(existing?.frequency ?? "Daily");
+  const [times, setTimes] = useState<string[]>(existing?.times ?? ["08:00"]);
   const [customTime, setCustomTime] = useState("");
-  const [instructions, setInstructions] = useState("");
-  const [quantity, setQuantity] = useState("");
-  const [identification, setIdentification] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
+  const [instructions, setInstructions] = useState(existing?.instructions ?? "");
+  const [quantity, setQuantity] = useState(existing ? String(existing.quantity_total || "") : "");
+  const [identification, setIdentification] = useState(existing?.identification_cue || "");
+  const [imageUrl, setImageUrl] = useState(existing?.image_url || "");
   const [selectedImage, setSelectedImage] = useState<{
     base64: string;
     contentType: string;
   } | null>(null);
-  const [memberId, setMemberId] = useState<string | null>(activeMemberId);
-  const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
+  const [memberId, setMemberId] = useState<string | null>(existing ? existing.member_id ?? null : activeMemberId);
+  const [days, setDays] = useState<number[]>(existing?.days?.length ? existing.days : [0, 1, 2, 3, 4, 5, 6]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!existing) return;
-    setName(existing.name);
-    setDosage(existing.dosage);
-    setFrequency(existing.frequency);
-    setTimes(existing.times);
-    setInstructions(existing.instructions);
-    setQuantity(String(existing.quantity_total || ""));
-    setIdentification(existing.identification_cue || "");
-    setImageUrl(existing.image_url || "");
-    setMemberId(existing.member_id ?? null);
-    setDays(existing.days?.length ? existing.days : [0, 1, 2, 3, 4, 5, 6]);
-  }, [existing]);
 
   const toggleTime = (time: string) =>
     setTimes((current) => (current.includes(time) ? current.filter((value) => value !== time) : [...current, time].sort()));
@@ -422,7 +420,7 @@ const useStyles = makeStyles((colors) =>
     content: { padding: 20, gap: 18 },
     intro: { color: colors.muted, fontSize: 14, lineHeight: 20 },
     field: { gap: 8 },
-    label: { color: colors.onSurface, fontSize: 14, fontWeight: "750" },
+    label: { color: colors.onSurface, fontSize: 14, fontWeight: "700" },
     helper: { color: colors.muted, fontSize: 12 },
     input: {
       minHeight: 50,

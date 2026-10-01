@@ -40,7 +40,7 @@ function CareLink({ icon, title, detail, onPress, testID, accent }: CareLinkProp
 export default function CareScreen() {
   const router = useRouter();
   const styles = useStyles();
-  const { activeFamilyGroup, members, medicines, archivedMedicines, checkups, loading, error, refresh } = useData();
+  const { members, medicines, archivedMedicines, checkups, loading, error, refresh } = useData();
 
   return (
     <ScreenShell testID="care-screen" header={<AppHeader />}>
@@ -156,7 +156,7 @@ const useStyles = makeStyles((colors) =>
       alignItems: "center",
       justifyContent: "center",
     },
-    linkTitle: { color: colors.onSurface, fontSize: 15, fontWeight: "750" },
+    linkTitle: { color: colors.onSurface, fontSize: 15, fontWeight: "700" },
     linkDetail: { color: colors.muted, fontSize: 12, marginTop: 2 },
     pressed: { opacity: 0.8 },
   }),

@@ -391,7 +391,7 @@ const useStyles = makeStyles((colors) =>
     content: { padding: 20, gap: 18 },
     intro: { color: colors.muted, fontSize: 14, lineHeight: 20 },
     field: { gap: 8 },
-    label: { color: colors.onSurface, fontSize: 14, fontWeight: "750" },
+    label: { color: colors.onSurface, fontSize: 14, fontWeight: "700" },
     helper: { color: colors.muted, fontSize: 12 },
     input: {
       minHeight: 50,

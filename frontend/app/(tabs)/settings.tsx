@@ -288,7 +288,7 @@ const useStyles = makeStyles((colors) =>
       justifyContent: "center",
       backgroundColor: colors.brandTertiary,
     },
-    rowTitle: { color: colors.onSurface, fontSize: 15, fontWeight: "750" },
+    rowTitle: { color: colors.onSurface, fontSize: 15, fontWeight: "700" },
     rowSubtitle: { color: colors.muted, fontSize: 12, marginTop: 2 },
     pressed: { opacity: 0.85 },
   }),

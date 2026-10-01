@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -17,9 +17,34 @@ export default function CheckupsScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
   const { checkups, members, loading, removeCheckup } = useData();
 
-  const now = Date.now();
-  const upcoming = useMemo(() => checkups.filter((checkup) => new Date(checkup.scheduled_at).getTime() >= now), [checkups, now]);
-  const past = useMemo(() => checkups.filter((checkup) => new Date(checkup.scheduled_at).getTime() < now), [checkups, now]);
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const updateNow = () => {
+      const currentTime = Date.now();
+      setNow(currentTime);
+      const nextBoundary = checkups.reduce((next, checkup) => {
+        const scheduledAt = new Date(checkup.scheduled_at).getTime();
+        return scheduledAt > currentTime ? Math.min(next, scheduledAt) : next;
+      }, Number.POSITIVE_INFINITY);
+      if (Number.isFinite(nextBoundary)) {
+        timeout = setTimeout(updateNow, Math.min(nextBoundary - currentTime + 1, 2_147_483_647));
+      }
+    };
+
+    updateNow();
+    return () => {
+      if (timeout !== undefined) clearTimeout(timeout);
+    };
+  }, [checkups]);
+  const upcoming = useMemo(
+    () => (now === null ? [] : checkups.filter((checkup) => new Date(checkup.scheduled_at).getTime() >= now)),
+    [checkups, now],
+  );
+  const past = useMemo(
+    () => (now === null ? [] : checkups.filter((checkup) => new Date(checkup.scheduled_at).getTime() < now)),
+    [checkups, now],
+  );
   const highlight = params.id ? checkups.find((checkup) => checkup.id === params.id) : null;
 
   const confirmDelete = (id: string) => {

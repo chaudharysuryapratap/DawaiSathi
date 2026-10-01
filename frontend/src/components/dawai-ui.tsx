@@ -215,7 +215,7 @@ const useStyles = makeStyles((colors) =>
       marginBottom: 4,
     },
     emptyIconText: { color: colors.brandPrimary },
-    stateTitle: { color: colors.onSurface, fontSize: 18, fontWeight: "750", textAlign: "center" },
+    stateTitle: { color: colors.onSurface, fontSize: 18, fontWeight: "700", textAlign: "center" },
     stateText: { color: colors.muted, fontSize: 14, lineHeight: 20, textAlign: "center" },
     errorText: { color: colors.error },
   }),

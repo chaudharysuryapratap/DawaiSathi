@@ -1,10 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { PrimaryButton } from "@/src/components/dawai-ui";
+import { LoadingState, PrimaryButton } from "@/src/components/dawai-ui";
 import { useData } from "@/src/data-context";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -13,37 +13,40 @@ function toLocalIso(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00`;
 }
 
+type Checkup = ReturnType<typeof useData>["checkups"][number];
+
 export default function AddCheckupScreen() {
+  const params = useLocalSearchParams<{ id?: string }>();
+  const { checkups, loading } = useData();
+  const existing = checkups.find((checkup) => checkup.id === params.id);
+
+  if (params.id && loading && !existing) {
+    return <LoadingState label="Loading checkup" />;
+  }
+
+  return <AddCheckupForm existing={existing} />;
+}
+
+function AddCheckupForm({ existing }: { existing: Checkup | undefined }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const styles = useStyles();
-  const params = useLocalSearchParams<{ id?: string }>();
-  const { checkups, members, activeMemberId, addCheckup, updateCheckup, removeCheckup } = useData();
-  const existing = useMemo(() => checkups.find((checkup) => checkup.id === params.id), [checkups, params.id]);
+  const { members, activeMemberId, addCheckup, updateCheckup, removeCheckup } = useData();
 
-  const [title, setTitle] = useState("");
-  const [doctor, setDoctor] = useState("");
-  const [location, setLocation] = useState("");
-  const [notes, setNotes] = useState("");
+  const [title, setTitle] = useState(existing?.title ?? "");
+  const [doctor, setDoctor] = useState(existing?.doctor ?? "");
+  const [location, setLocation] = useState(existing?.location ?? "");
+  const [notes, setNotes] = useState(existing?.notes ?? "");
   const [dateValue, setDateValue] = useState(() => {
+    if (existing) return new Date(existing.scheduled_at);
     const next = new Date();
     next.setHours(next.getHours() + 24, 0, 0, 0);
     return next;
   });
-  const [memberId, setMemberId] = useState<string | null>(activeMemberId);
+  const [memberId, setMemberId] = useState<string | null>(existing ? existing.member_id : activeMemberId);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!existing) return;
-    setTitle(existing.title);
-    setDoctor(existing.doctor);
-    setLocation(existing.location);
-    setNotes(existing.notes);
-    setDateValue(new Date(existing.scheduled_at));
-    setMemberId(existing.member_id);
-  }, [existing]);
 
   const save = async () => {
     if (!title.trim()) {
@@ -262,7 +265,7 @@ const useStyles = makeStyles((colors) =>
     content: { padding: 20, gap: 18 },
     intro: { color: colors.muted, fontSize: 14, lineHeight: 20 },
     field: { gap: 8 },
-    label: { color: colors.onSurface, fontSize: 14, fontWeight: "750" },
+    label: { color: colors.onSurface, fontSize: 14, fontWeight: "700" },
     input: {
       minHeight: 50,
       borderRadius: 14,

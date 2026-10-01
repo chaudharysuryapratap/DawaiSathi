@@ -119,8 +119,8 @@ export function useTheme(): { scheme: ColorScheme; colors: ThemeColors } {
 
 // Themed StyleSheet: returns a hook that builds the sheet from the active
 // scheme's colors and memoizes it until the scheme changes.
-export function makeStyles<T extends { [key: string]: object }>(
-  factory: (colors: ThemeColors) => T & StyleSheet.NamedStyles<any>,
+export function makeStyles<T extends StyleSheet.NamedStyles<T>>(
+  factory: (colors: ThemeColors) => T,
 ): () => T {
   return function useStyles(): T {
     const { colors } = useTheme();

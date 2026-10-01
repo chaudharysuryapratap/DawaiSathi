@@ -13,5 +13,9 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  "exclude": [
+    "dawaisathi-patch-backup-20260930-112249",
+    "dawaisathi-recovery-20260930-111124"
   ]
 }

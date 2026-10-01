@@ -79,7 +79,7 @@ const useStyles = makeStyles((colors) =>
       justifyContent: "center",
       backgroundColor: colors.brandTertiary,
     },
-    title: { color: colors.onSurface, fontSize: 15, fontWeight: "750" },
+    title: { color: colors.onSurface, fontSize: 15, fontWeight: "700" },
     description: { color: colors.muted, fontSize: 12, marginTop: 2 },
     pressed: { opacity: 0.75, transform: [{ scale: 0.99 }] },
   }),
