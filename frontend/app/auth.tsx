@@ -6,7 +6,14 @@ export default function AuthRoute() {
   const { status, error, retry } = useAuth();
   if (status === "loading") return <LoadingState label="Restoring session" />;
   if (status === "error") {
-    return <ErrorState message={error ?? "Could not restore your session."} onRetry={retry} />;
+    return (
+      <ErrorState
+        title="Could not restore your session"
+        icon="alert-circle-outline"
+        message={error ?? "Could not restore your session."}
+        onRetry={retry}
+      />
+    );
   }
   return <AuthScreen />;
 }

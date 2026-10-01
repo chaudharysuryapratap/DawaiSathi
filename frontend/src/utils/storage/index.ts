@@ -20,6 +20,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 
+import { getPhysicalSecureStorageKey } from "../../auth-token-key";
 import { AssertNoExtras, StorageBase, StorageItemValue } from "./storage-base";
 
 export class Storage extends StorageBase {
@@ -67,11 +68,13 @@ export class Storage extends StorageBase {
     key: string,
     fallback: Fallback,
   ): Promise<Fallback | null> {
+    const physicalKey = getPhysicalSecureStorageKey(key, "native");
     try {
-      this.validateSecureKey(key);
-      const raw = await SecureStore.getItemAsync(key);
+      this.validateSecureKey(physicalKey);
+      const raw = await SecureStore.getItemAsync(physicalKey);
       return this.retrieve(raw, fallback);
     } catch (e) {
+      this.warnSecureStoreKeyRejection("read", physicalKey, e);
       return this.failSecureOperation("read", e);
     }
   }
@@ -80,21 +83,25 @@ export class Storage extends StorageBase {
     key: string,
     value: Value,
   ): Promise<boolean> {
+    const physicalKey = getPhysicalSecureStorageKey(key, "native");
     try {
-      this.validateSecureKey(key);
-      await SecureStore.setItemAsync(key, JSON.stringify(value));
+      this.validateSecureKey(physicalKey);
+      await SecureStore.setItemAsync(physicalKey, JSON.stringify(value));
       return true;
     } catch (e) {
+      this.warnSecureStoreKeyRejection("save", physicalKey, e);
       return this.failSecureOperation("save", e);
     }
   }
 
   async secureRemove(key: string): Promise<boolean> {
+    const physicalKey = getPhysicalSecureStorageKey(key, "native");
     try {
-      this.validateSecureKey(key);
-      await SecureStore.deleteItemAsync(key);
+      this.validateSecureKey(physicalKey);
+      await SecureStore.deleteItemAsync(physicalKey);
       return true;
     } catch (e) {
+      this.warnSecureStoreKeyRejection("remove", physicalKey, e);
       return this.failSecureOperation("remove", e);
     }
   }

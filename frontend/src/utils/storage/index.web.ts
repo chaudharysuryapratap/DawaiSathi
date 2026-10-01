@@ -7,6 +7,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { getPhysicalSecureStorageKey } from "../../auth-token-key";
 import { AssertNoExtras, StorageBase, StorageItemValue } from "./storage-base";
 
 export class Storage extends StorageBase {
@@ -53,7 +54,8 @@ export class Storage extends StorageBase {
     fallback: Fallback,
   ): Promise<Fallback | null> {
     try {
-      const raw = globalThis.localStorage.getItem(key);
+      const physicalKey = getPhysicalSecureStorageKey(key, "web");
+      const raw = globalThis.localStorage.getItem(physicalKey);
       return this.retrieve(raw, fallback);
     } catch (error) {
       return this.failSecureOperation("read", error);
@@ -65,7 +67,8 @@ export class Storage extends StorageBase {
     value: Value,
   ): Promise<boolean> {
     try {
-      globalThis.localStorage.setItem(key, JSON.stringify(value));
+      const physicalKey = getPhysicalSecureStorageKey(key, "web");
+      globalThis.localStorage.setItem(physicalKey, JSON.stringify(value));
       return true;
     } catch (error) {
       return this.failSecureOperation("save", error);
@@ -74,7 +77,8 @@ export class Storage extends StorageBase {
 
   async secureRemove(key: string): Promise<boolean> {
     try {
-      globalThis.localStorage.removeItem(key);
+      const physicalKey = getPhysicalSecureStorageKey(key, "web");
+      globalThis.localStorage.removeItem(physicalKey);
       return true;
     } catch (error) {
       return this.failSecureOperation("remove", error);

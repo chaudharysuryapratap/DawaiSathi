@@ -106,12 +106,22 @@ export function LoadingState({ label = "Loading DawaiSathi" }: { label?: string 
   );
 }
 
-export function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+export function ErrorState({
+  title = "We couldn’t reach DawaiSathi",
+  icon = "cloud-offline-outline",
+  message,
+  onRetry,
+}: {
+  title?: string;
+  icon?: "cloud-offline-outline" | "alert-circle-outline";
+  message: string;
+  onRetry: () => void;
+}) {
   const styles = useStyles();
   return (
     <View style={styles.stateCard}>
-      <Ionicons name="cloud-offline-outline" size={26} color={styles.errorText.color} />
-      <Text style={styles.stateTitle}>We couldn’t reach DawaiSathi</Text>
+      <Ionicons name={icon} size={26} color={styles.errorText.color} />
+      <Text style={styles.stateTitle}>{title}</Text>
       <Text style={styles.stateText}>{message}</Text>
       <Pressable onPress={onRetry} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
         <Text style={styles.secondaryText}>Try again</Text>

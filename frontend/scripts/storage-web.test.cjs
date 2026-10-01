@@ -22,6 +22,13 @@ function loadErrorMessage() {
   return module.exports;
 }
 
+function loadAuthTokenKeys() {
+  const sourcePath = path.resolve("src", "auth-token-key.ts");
+  const module = { exports: {} };
+  vm.runInNewContext(transpile(sourcePath), { module, exports: module.exports }, { filename: sourcePath });
+  return module.exports;
+}
+
 function loadStorageBase() {
   const sourcePath = path.resolve("src", "utils", "storage", "storage-base.ts");
   const module = { exports: {} };
@@ -47,12 +54,14 @@ const compiled = transpile(sourcePath);
 function loadStorage(localStorage, browserGlobal = { localStorage }) {
   const module = { exports: {} };
   const StorageBase = loadStorageBase();
+  const authTokenKeys = loadAuthTokenKeys();
   const sandbox = {
     module,
     exports: module.exports,
     globalThis: browserGlobal,
     require(id) {
       if (id === "./storage-base") return { StorageBase };
+      if (id === "../../auth-token-key") return authTokenKeys;
       if (id === "@react-native-async-storage/async-storage") {
         return { default: { getItem: async () => null, setItem: async () => {}, removeItem: async () => {} } };
       }

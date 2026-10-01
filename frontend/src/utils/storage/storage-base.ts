@@ -6,6 +6,10 @@ import { getErrorMessage } from "../error-message";
 export type StorageItemKey = string;
 export type StorageItemValue = string | number | boolean | null;
 
+function isValidSecureKey(key: unknown): key is string {
+  return typeof key === "string" && key.length > 0 && !/[^A-Za-z0-9._-]/.test(key);
+}
+
 export class StorageOperationError extends Error {
   constructor(operation: string, cause: unknown) {
     const reason = getErrorMessage(cause, "The platform reported an unknown storage error");
@@ -20,7 +24,7 @@ export type AssertNoExtras<T extends never> = T;
 
 export abstract class StorageBase {
   protected validateSecureKey(key: StorageItemKey): void {
-    if (typeof key !== "string" || !key.length || /[^A-Za-z0-9._-]/.test(key)) {
+    if (!isValidSecureKey(key)) {
       throw new Error(
         'Invalid secure storage key. Keys must not be empty and contain only alphanumeric characters, ".", "-", and "_".',
       );
@@ -34,6 +38,26 @@ export abstract class StorageBase {
   protected failSecureOperation(operation: string, error: unknown): never {
     this.warn(`secure${operation}`, "[redacted]", error);
     throw new StorageOperationError(operation, error);
+  }
+
+  protected warnSecureStoreKeyRejection(operation: string, key: StorageItemKey, error: unknown): void {
+    if (!getErrorMessage(error, "").startsWith("Invalid key provided to SecureStore.")) return;
+
+    const invalidCodePoints = [
+      ...new Set(
+        Array.from(key)
+          .filter((character) => /[^A-Za-z0-9._-]/.test(character))
+          .map((character) => {
+            const codePoint = character.codePointAt(0) ?? 0;
+            return `U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}`;
+          }),
+      ),
+    ].slice(0, 16);
+    console.warn(
+      `[storage] SecureStore rejected key: operation=${operation} keyValid=${isValidSecureKey(
+        key,
+      )} keyLength=${Array.from(key).length} invalidCodePoints=${invalidCodePoints.join(",") || "none"}`,
+    );
   }
 
   // raw is whatever AsyncStorage / SecureStore returned: a JSON-encoded string

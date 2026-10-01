@@ -71,6 +71,9 @@ AsyncStorage's web implementation. Browser storage is accessible to JavaScript
 running on this origin and does not provide the same protection as the native
 iOS Keychain or Android encrypted storage. Use a trusted browser profile, keep
 the app protected against cross-site scripting, and sign out on shared devices.
+The auth token's logical key `dawaisathi:authToken` is mapped to the
+Expo-compatible native key `dawaisathi_authToken`; browsers continue using the
+existing `dawaisathi:authToken` key.
 Because browser tokens are available to same-origin JavaScript and are not
 `HttpOnly`, localStorage is a convenience for local use, not equivalent to
 native secure storage; use a server-managed `HttpOnly` session for deployments
