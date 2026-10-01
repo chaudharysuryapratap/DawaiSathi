@@ -1,17 +1,14 @@
 // Abstract base for the storage wrapper — shared types + helpers.
 // Concrete implementations live in index.ts (native) and index.web.ts (web).
 
+import { getErrorMessage } from "../error-message";
+
 export type StorageItemKey = string;
 export type StorageItemValue = string | number | boolean | null;
 
 export class StorageOperationError extends Error {
   constructor(operation: string, cause: unknown) {
-    const reason =
-      cause instanceof Error
-        ? cause.message
-        : typeof cause === "string"
-          ? cause
-          : "The platform reported an unknown storage error";
+    const reason = getErrorMessage(cause, "The platform reported an unknown storage error");
     super(`Secure storage could not ${operation}${reason ? `: ${reason}` : "."}`);
     this.name = "StorageOperationError";
   }
@@ -23,7 +20,7 @@ export type AssertNoExtras<T extends never> = T;
 
 export abstract class StorageBase {
   protected warn(op: string, key: StorageItemKey, e: unknown) {
-    console.warn(`[storage] ${op}(${key}) failed`, e);
+    console.warn(`[storage] ${op}(${key}) failed: ${getErrorMessage(e, "Unknown storage error")}`);
   }
 
   protected failSecureOperation(operation: string, error: unknown): never {

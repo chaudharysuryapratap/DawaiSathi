@@ -5,40 +5,52 @@ const test = require("node:test");
 const vm = require("node:vm");
 const ts = require("typescript");
 
-const sourcePath = path.resolve("src", "utils", "storage", "index.web.ts");
-const source = fs.readFileSync(sourcePath, "utf8");
-const compiled = ts.transpileModule(source, {
-  compilerOptions: {
-    module: ts.ModuleKind.CommonJS,
-    target: ts.ScriptTarget.ES2022,
-  },
-}).outputText;
-
-class StorageOperationError extends Error {
-  constructor(operation, cause) {
-    super(`Secure storage could not ${operation}: ${cause.message}`);
-    this.name = "StorageOperationError";
-  }
+function transpile(sourcePath) {
+  const source = fs.readFileSync(sourcePath, "utf8");
+  return ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
 }
 
-class StorageBase {
-  warn() {}
-
-  failSecureOperation(operation, error) {
-    throw new StorageOperationError(operation, error);
-  }
-
-  retrieve(raw, fallback) {
-    return raw === null ? fallback : JSON.parse(raw);
-  }
-}
-
-function loadStorage(localStorage) {
+function loadErrorMessage() {
+  const sourcePath = path.resolve("src", "utils", "error-message.ts");
   const module = { exports: {} };
+  vm.runInNewContext(transpile(sourcePath), { module, exports: module.exports }, { filename: sourcePath });
+  return module.exports;
+}
+
+function loadStorageBase() {
+  const sourcePath = path.resolve("src", "utils", "storage", "storage-base.ts");
+  const module = { exports: {} };
+  vm.runInNewContext(
+    transpile(sourcePath),
+    {
+      module,
+      exports: module.exports,
+      console: { warn() {} },
+      require(id) {
+        if (id === "../error-message") return loadErrorMessage();
+        throw new Error(`Unexpected import: ${id}`);
+      },
+    },
+    { filename: sourcePath },
+  );
+  return module.exports.StorageBase;
+}
+
+const sourcePath = path.resolve("src", "utils", "storage", "index.web.ts");
+const compiled = transpile(sourcePath);
+
+function loadStorage(localStorage, browserGlobal = { localStorage }) {
+  const module = { exports: {} };
+  const StorageBase = loadStorageBase();
   const sandbox = {
     module,
     exports: module.exports,
-    globalThis: { localStorage },
+    globalThis: browserGlobal,
     require(id) {
       if (id === "./storage-base") return { StorageBase };
       if (id === "@react-native-async-storage/async-storage") {
@@ -73,6 +85,17 @@ test("secure session storage survives a new storage instance and logout removes 
   assert.equal(await original.secureGet("auth-token", null), null);
 });
 
+test("web secure storage round-trips supported values and falls back for malformed data", async () => {
+  const browserStorage = createBrowserStorage();
+  const Storage = loadStorage(browserStorage);
+  const storage = new Storage();
+
+  assert.equal(await storage.secureSet("auth-flag", true), true);
+  assert.equal(await storage.secureGet("auth-flag", false), true);
+  browserStorage.values.set("malformed", "{");
+  assert.equal(await storage.secureGet("malformed", null), null);
+});
+
 test("browser storage failures include their diagnostic reason", async () => {
   const unavailableStorage = {
     getItem() {
@@ -99,5 +122,28 @@ test("browser storage failures include their diagnostic reason", async () => {
   await assert.rejects(storage.secureRemove("auth-token"), {
     name: "StorageOperationError",
     message: /remove: Storage is unavailable/,
+  });
+
+  const credentialFailure = loadStorage({
+    setItem() {
+      throw new Error("Storage access token=opaque-secret");
+    },
+  });
+  await assert.rejects(new credentialFailure().secureSet("auth-token", "value"), (error) => {
+    assert.match(error.message, /save: Storage access token=\[redacted\]/);
+    assert.doesNotMatch(error.message, /opaque-secret/);
+    return true;
+  });
+
+  const unavailableBrowser = {};
+  Object.defineProperty(unavailableBrowser, "localStorage", {
+    get() {
+      throw new Error("Browser denied storage access");
+    },
+  });
+  const getterFailure = loadStorage(undefined, unavailableBrowser);
+  await assert.rejects(new getterFailure().secureGet("auth-token", null), {
+    name: "StorageOperationError",
+    message: /read: Browser denied storage access/,
   });
 });
