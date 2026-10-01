@@ -40,15 +40,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     const restore = async () => {
-      const token = await storage.secureGet<string | null>(AUTH_TOKEN_KEY, null);
-      if (cancelled) return;
-      if (!token) {
-        setAccessToken(null);
-        setStatus("signedOut");
-        return;
-      }
-      setAccessToken(token);
       try {
+        const token = await storage.secureGet<string | null>(AUTH_TOKEN_KEY, null);
+        if (cancelled) return;
+        if (!token) {
+          setAccessToken(null);
+          setUser(null);
+          setStatus("signedOut");
+          return;
+        }
+        setAccessToken(token);
         const currentUser = await api.currentAccount();
         if (cancelled) return;
         setUser(currentUser);
@@ -56,13 +57,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setStatus("signedIn");
       } catch (restoreError) {
         if (cancelled) return;
-        if (restoreError instanceof Error && restoreError.message.includes("session")) {
-          await storage.secureRemove(AUTH_TOKEN_KEY);
+        if (restoreError instanceof Error && "status" in restoreError && restoreError.status === 401) {
+          try {
+            await storage.secureRemove(AUTH_TOKEN_KEY);
+          } catch (removeError) {
+            setError(
+              removeError instanceof Error
+                ? removeError.message
+                : "Could not remove the expired saved sign-in.",
+            );
+            setUser(null);
+            setAccessToken(null);
+            setStatus("error");
+            return;
+          }
           setAccessToken(null);
           setUser(null);
           setStatus("signedOut");
           return;
         }
+        setAccessToken(null);
+        setUser(null);
         setError(restoreError instanceof Error ? restoreError.message : "Could not restore your session.");
         setStatus("error");
       }
@@ -74,8 +89,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [restoreGeneration]);
 
   const saveSession = useCallback(async (session: { access_token: string; user: Account }) => {
+    if (!session.access_token || !session.user) {
+      throw new Error("The server returned an incomplete sign-in response. Try again.");
+    }
     const saved = await storage.secureSet(AUTH_TOKEN_KEY, session.access_token);
-    if (!saved) throw new Error("Could not securely store your sign-in. Try again.");
+    if (!saved) {
+      throw new Error("Secure storage did not confirm that the sign-in was saved. Try again.");
+    }
     setAccessToken(session.access_token);
     setUser(session.user);
     setError(null);
@@ -112,7 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     const removed = await storage.secureRemove(AUTH_TOKEN_KEY);
-    if (!removed) throw new Error("Could not clear the saved sign-in.");
+    if (!removed) throw new Error("Secure storage did not confirm that the saved sign-in was removed.");
     setAccessToken(null);
     setUser(null);
     setError(null);

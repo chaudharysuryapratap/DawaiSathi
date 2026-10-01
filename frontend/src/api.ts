@@ -47,20 +47,80 @@ export function authHeaders(): Record<string, string> {
   return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
 }
 
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
+function formatErrorDetail(value: unknown): string | null {
+  if (typeof value === "string") return value.trim() || null;
+  if (Array.isArray(value)) {
+    const messages = value.map(formatErrorDetail).filter((message): message is string => !!message);
+    return messages.length ? messages.join("; ") : null;
+  }
+  if (!value || typeof value !== "object") return null;
+
+  const detail = value as Record<string, unknown>;
+  if (typeof detail.msg === "string") {
+    const location = Array.isArray(detail.loc)
+      ? detail.loc.filter((part) => typeof part === "string" && part !== "body").join(" ")
+      : "";
+    return location ? `${location}: ${detail.msg}` : detail.msg;
+  }
+  if (typeof detail.message === "string") return detail.message;
+  return null;
+}
+
+function apiErrorMessage(body: unknown): string | null {
+  if (typeof body === "string") return body.trim() || null;
+  if (!body || typeof body !== "object") return null;
+  const payload = body as Record<string, unknown>;
+  return (
+    formatErrorDetail(payload.detail) ??
+    formatErrorDetail(payload.message) ??
+    formatErrorDetail(payload.error)
+  );
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const headers = new Headers(options?.headers);
   headers.set("Content-Type", "application/json");
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.detail ?? "We couldn't complete that request.");
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (error) {
+    if (__DEV__) console.warn("[api] Backend request failed; credentials and tokens were not logged.", error);
+    throw new Error("Could not reach the DawaiSathi server. Check that it is running and try again.");
   }
   const text = await response.text();
-  return (text ? JSON.parse(text) : (null as unknown as T)) as T;
+  let body: unknown = null;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
+  }
+  if (!response.ok) {
+    const message =
+      apiErrorMessage(body) ?? `The server could not complete the request (HTTP ${response.status}).`;
+    throw new ApiRequestError(message, response.status);
+  }
+  if (!text) return null as unknown as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error("The server returned an unreadable response. Try again.");
+  }
 }
 
 const query = (params: Record<string, string | number | null | undefined>) => {

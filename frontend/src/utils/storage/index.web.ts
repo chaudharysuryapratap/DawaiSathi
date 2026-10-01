@@ -1,8 +1,9 @@
 // Web storage (Metro picks index.ts on native).
-// Helpers never throw: reads return `fallback`, writes return `false`.
+// General helpers use AsyncStorage's localStorage shim; secure methods use localStorage directly
+// so browser access failures are preserved and can be reported instead of converted to `false`.
 // Values supported: string | number | boolean | null (JSON-serialized on disk).
 // Usage: import { storage } from "@/src/utils/storage"; await storage.getItem(key, fallback);
-// No Keychain on web — secure* helpers reuse AsyncStorage (no expo-secure-store).
+// Browsers have no Keychain — secure* helpers use browser localStorage.
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -51,18 +52,33 @@ export class Storage extends StorageBase {
     key: string,
     fallback: Fallback,
   ): Promise<Fallback | null> {
-    return this.getItem(key, fallback);
+    try {
+      const raw = globalThis.localStorage.getItem(key);
+      return this.retrieve(raw, fallback);
+    } catch (error) {
+      return this.failSecureOperation("read", error);
+    }
   }
 
   async secureSet<Value extends StorageItemValue>(
     key: string,
     value: Value,
   ): Promise<boolean> {
-    return this.setItem(key, value);
+    try {
+      globalThis.localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (error) {
+      return this.failSecureOperation("save", error);
+    }
   }
 
   async secureRemove(key: string): Promise<boolean> {
-    return this.removeItem(key);
+    try {
+      globalThis.localStorage.removeItem(key);
+      return true;
+    } catch (error) {
+      return this.failSecureOperation("remove", error);
+    }
   }
 }
 

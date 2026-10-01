@@ -66,7 +66,11 @@ LAN-reachable address); do not set that device URL to `127.0.0.1`. FastAPI
 allows only the explicit local Expo Web origins by default; set `CORS_ORIGINS`
 to a comma-separated list if the browser origin or port changes.
 
-Web storage persists in the browser using AsyncStorage's web implementation.
+Browser sign-in sessions persist in `localStorage`; general app preferences use
+AsyncStorage's web implementation. Browser storage is accessible to JavaScript
+running on this origin and does not provide the same protection as the native
+iOS Keychain or Android encrypted storage. Use a trusted browser profile, keep
+the app protected against cross-site scripting, and sign out on shared devices.
 Prescription camera capture requires a device camera and is not available in a
 desktop browser; browser-based prescription upload also remains a placeholder.
 

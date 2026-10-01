@@ -8,14 +8,14 @@
 // Namespaces: general KV -> getItem/setItem/removeItem (AsyncStorage);
 //             tokens/secrets -> secureGet/secureSet/secureRemove (Keychain).
 // Values are auto JSON-serialized (string|number|boolean|null) in this implementation — never JSON.stringify/parse yourself.
-// Helpers NEVER throw: a miss returns `fallback`, a failed write returns `false` (failures are SILENT).
-// 
+// General KV helpers return fallback/false on failure. Secure helpers return fallback for a miss,
+// true on success, and throw StorageOperationError when the platform storage fails.
+//
 // Use async/await for all storage operations.
 //
 // AUTH TOKENS: use ONE namespace (secure*) + ONE shared key constant, and read/write it the SAME
 // way on both sides — the login/AuthContext (write) and the API client/interceptor (read). A
-// mismatched method or key silently returns the fallback, surfacing as a logged-out state or 401/403
-// with no error in the logs.
+// mismatched method or key returns the fallback, surfacing as a logged-out state or 401/403.
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
@@ -71,8 +71,7 @@ export class Storage extends StorageBase {
       const raw = await SecureStore.getItemAsync(key);
       return this.retrieve(raw, fallback);
     } catch (e) {
-      this.warn("secureGet", key, e);
-      return fallback;
+      return this.failSecureOperation("read", e);
     }
   }
 
@@ -84,8 +83,7 @@ export class Storage extends StorageBase {
       await SecureStore.setItemAsync(key, JSON.stringify(value));
       return true;
     } catch (e) {
-      this.warn("secureSet", key, e);
-      return false;
+      return this.failSecureOperation("save", e);
     }
   }
 
@@ -94,8 +92,7 @@ export class Storage extends StorageBase {
       await SecureStore.deleteItemAsync(key);
       return true;
     } catch (e) {
-      this.warn("secureRemove", key, e);
-      return false;
+      return this.failSecureOperation("remove", e);
     }
   }
 }

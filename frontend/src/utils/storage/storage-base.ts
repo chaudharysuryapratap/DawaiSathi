@@ -4,6 +4,19 @@
 export type StorageItemKey = string;
 export type StorageItemValue = string | number | boolean | null;
 
+export class StorageOperationError extends Error {
+  constructor(operation: string, cause: unknown) {
+    const reason =
+      cause instanceof Error
+        ? cause.message
+        : typeof cause === "string"
+          ? cause
+          : "The platform reported an unknown storage error";
+    super(`Secure storage could not ${operation}${reason ? `: ${reason}` : "."}`);
+    this.name = "StorageOperationError";
+  }
+}
+
 // Helper for subclasses to enforce that they don't declare methods beyond
 // StorageBase. Use as: type _ = AssertNoExtras<Exclude<keyof Storage, keyof StorageBase>>;
 export type AssertNoExtras<T extends never> = T;
@@ -11,6 +24,11 @@ export type AssertNoExtras<T extends never> = T;
 export abstract class StorageBase {
   protected warn(op: string, key: StorageItemKey, e: unknown) {
     console.warn(`[storage] ${op}(${key}) failed`, e);
+  }
+
+  protected failSecureOperation(operation: string, error: unknown): never {
+    this.warn(`secure${operation}`, "[redacted]", error);
+    throw new StorageOperationError(operation, error);
   }
 
   // raw is whatever AsyncStorage / SecureStore returned: a JSON-encoded string
