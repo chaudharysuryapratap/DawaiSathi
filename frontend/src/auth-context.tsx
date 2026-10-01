@@ -6,13 +6,15 @@ import {
   useMemo,
   useState,
 } from "react";
+import { Platform } from "react-native";
 
 import { api, setAccessToken } from "./api";
+import { getAuthTokenStorageKey } from "./auth-token-key";
 import type { Account } from "./types";
 import { getErrorMessage } from "./utils/error-message";
 import { storage } from "./utils/storage";
 
-export const AUTH_TOKEN_KEY = "dawaisathi:authToken";
+export { AUTH_TOKEN_KEY } from "./auth-token-key";
 
 type AuthState = {
   status: "loading" | "signedOut" | "signedIn" | "error";
@@ -33,6 +35,7 @@ type AuthState = {
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const tokenStorageKey = getAuthTokenStorageKey(Platform.OS);
   const [status, setStatus] = useState<AuthState["status"]>("loading");
   const [user, setUser] = useState<Account | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     const restore = async () => {
       try {
-        const token = await storage.secureGet<string | null>(AUTH_TOKEN_KEY, null);
+        const token = await storage.secureGet<string | null>(tokenStorageKey, null);
         if (cancelled) return;
         if (!token) {
           setAccessToken(null);
@@ -60,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         if (restoreError instanceof Error && "status" in restoreError && restoreError.status === 401) {
           try {
-            const removed = await storage.secureRemove(AUTH_TOKEN_KEY);
+            const removed = await storage.secureRemove(tokenStorageKey);
             if (!removed) throw new Error("Secure storage did not confirm that the expired sign-in was removed.");
           } catch (removeError) {
             setError(getErrorMessage(removeError, "Could not remove the expired saved sign-in."));
@@ -84,7 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [restoreGeneration]);
+  }, [restoreGeneration, tokenStorageKey]);
 
   const saveSession = useCallback(async (session: { access_token: string; user: Account }) => {
     if (
@@ -96,14 +99,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error("The server returned an incomplete sign-in response. Try again.");
     }
     try {
-      const saved = await storage.secureSet(AUTH_TOKEN_KEY, session.access_token);
+      const saved = await storage.secureSet(tokenStorageKey, session.access_token);
       if (!saved) throw new Error("Secure storage did not confirm that the sign-in was saved.");
     } catch (saveError) {
       setAccessToken(null);
       setUser(null);
       setStatus("signedOut");
       try {
-        const removed = await storage.secureRemove(AUTH_TOKEN_KEY);
+        const removed = await storage.secureRemove(tokenStorageKey);
         if (!removed) throw new Error("Secure storage did not confirm that the saved sign-in was removed.");
       } catch {
         throw new Error(
@@ -116,7 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(session.user);
     setError(null);
     setStatus("signedIn");
-  }, []);
+  }, [tokenStorageKey]);
 
   const login = useCallback(async (email: string, password: string) => {
     setAccessToken(null);
@@ -158,7 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      const removed = await storage.secureRemove(AUTH_TOKEN_KEY);
+      const removed = await storage.secureRemove(tokenStorageKey);
       if (!removed) throw new Error("Secure storage did not confirm that the saved sign-in was removed.");
     } catch (removeError) {
       setAccessToken(null);
@@ -176,7 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setError(null);
     setStatus("signedOut");
-  }, []);
+  }, [tokenStorageKey]);
 
   const retry = useCallback(() => {
     setError(null);

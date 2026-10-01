@@ -77,12 +77,13 @@ test("secure session storage survives a new storage instance and logout removes 
   const browserStorage = createBrowserStorage();
   const Storage = loadStorage(browserStorage);
   const original = new Storage();
+  const legacyWebKey = "dawaisathi:authToken";
 
-  assert.equal(await original.secureSet("auth-token", "opaque-session-value"), true);
-  assert.equal(browserStorage.values.get("auth-token"), JSON.stringify("opaque-session-value"));
-  assert.equal(await new Storage().secureGet("auth-token", null), "opaque-session-value");
-  assert.equal(await original.secureRemove("auth-token"), true);
-  assert.equal(await original.secureGet("auth-token", null), null);
+  assert.equal(await original.secureSet(legacyWebKey, "opaque-session-value"), true);
+  assert.equal(browserStorage.values.get(legacyWebKey), JSON.stringify("opaque-session-value"));
+  assert.equal(await new Storage().secureGet(legacyWebKey, null), "opaque-session-value");
+  assert.equal(await original.secureRemove(legacyWebKey), true);
+  assert.equal(await original.secureGet(legacyWebKey, null), null);
 });
 
 test("web secure storage round-trips supported values and falls back for malformed data", async () => {
