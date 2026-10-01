@@ -4,7 +4,7 @@ import { useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { LoadingState, PrimaryButton } from "@/src/components/dawai-ui";
+import { ErrorState, LoadingState, PrimaryButton } from "@/src/components/dawai-ui";
 import { useData } from "@/src/data-context";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -16,23 +16,47 @@ function toLocalIso(date: Date): string {
 type Checkup = ReturnType<typeof useData>["checkups"][number];
 
 export default function AddCheckupScreen() {
+  const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
-  const { checkups, loading } = useData();
-  const existing = checkups.find((checkup) => checkup.id === params.id);
+  const { checkups, loading, error, refresh } = useData();
+  if (!params.id) return <AddCheckupForm mode={{ kind: "create" }} />;
 
-  if (params.id && loading && !existing) {
+  const existing = checkups.find((checkup) => checkup.id === params.id);
+  if (loading && !existing) {
     return <LoadingState label="Loading checkup" />;
   }
+  if (error && !existing) return <ErrorState message={error} onRetry={refresh} />;
+  if (!existing) {
+    return <EditRecordNotFound label="Checkup" onBack={() => router.back()} />;
+  }
 
-  return <AddCheckupForm existing={existing} />;
+  return <AddCheckupForm mode={{ kind: "edit", checkup: existing }} />;
 }
 
-function AddCheckupForm({ existing }: { existing: Checkup | undefined }) {
+function EditRecordNotFound({ label, onBack }: { label: string; onBack: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 16 }}>
+      <Text style={{ color: colors.onSurface, fontSize: 18, fontWeight: "700", textAlign: "center" }}>
+        {label} not found
+      </Text>
+      <Text style={{ color: colors.muted, fontSize: 14, textAlign: "center" }}>
+        This item may have been removed or is no longer available.
+      </Text>
+      <PrimaryButton label="Go back" onPress={onBack} variant="secondary" />
+    </View>
+  );
+}
+
+type CheckupFormMode = { kind: "create" } | { kind: "edit"; checkup: Checkup };
+
+function AddCheckupForm({ mode }: { mode: CheckupFormMode }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const styles = useStyles();
   const { members, activeMemberId, addCheckup, updateCheckup, removeCheckup } = useData();
+  const existing = mode.kind === "edit" ? mode.checkup : undefined;
 
   const [title, setTitle] = useState(existing?.title ?? "");
   const [doctor, setDoctor] = useState(existing?.doctor ?? "");
@@ -64,7 +88,7 @@ function AddCheckupForm({ existing }: { existing: Checkup | undefined }) {
         scheduled_at: toLocalIso(dateValue),
         member_id: memberId,
       };
-      if (existing) await updateCheckup(existing.id, payload);
+      if (mode.kind === "edit") await updateCheckup(mode.checkup.id, payload);
       else await addCheckup(payload);
       router.back();
     } catch (requestError) {

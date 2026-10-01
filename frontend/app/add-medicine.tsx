@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { LoadingState, PrimaryButton } from "@/src/components/dawai-ui";
+import { ErrorState, LoadingState, PrimaryButton } from "@/src/components/dawai-ui";
 import { api, authHeaders, resolveMediaUrl } from "@/src/api";
 import { useData } from "@/src/data-context";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -26,18 +26,41 @@ const WEEKDAYS = [
 type Medicine = ReturnType<typeof useData>["medicines"][number];
 
 export default function AddMedicineScreen() {
+  const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const { medicines, loading } = useData();
-  const existing = medicines.find((medicine) => medicine.id === id);
+  const { medicines, loading, error, refresh } = useData();
+  if (!id) return <AddMedicineForm mode={{ kind: "create" }} />;
 
-  if (id && loading && !existing) {
+  const existing = medicines.find((medicine) => medicine.id === id);
+  if (loading && !existing) {
     return <LoadingState label="Loading medicine" />;
   }
+  if (error && !existing) return <ErrorState message={error} onRetry={refresh} />;
+  if (!existing) {
+    return <EditRecordNotFound onBack={() => router.back()} />;
+  }
 
-  return <AddMedicineForm existing={existing} />;
+  return <AddMedicineForm mode={{ kind: "edit", medicine: existing }} />;
 }
 
-function AddMedicineForm({ existing }: { existing: Medicine | undefined }) {
+function EditRecordNotFound({ onBack }: { onBack: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 16 }}>
+      <Text style={{ color: colors.onSurface, fontSize: 18, fontWeight: "700", textAlign: "center" }}>
+        Medicine not found
+      </Text>
+      <Text style={{ color: colors.muted, fontSize: 14, textAlign: "center" }}>
+        This item may have been removed or is no longer available.
+      </Text>
+      <PrimaryButton label="Go back" onPress={onBack} variant="secondary" />
+    </View>
+  );
+}
+
+type MedicineFormMode = { kind: "create" } | { kind: "edit"; medicine: Medicine };
+
+function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -80,6 +103,7 @@ function AddMedicineForm({ existing }: { existing: Medicine | undefined }) {
     [colors],
   );
   const { members, activeMemberId, addMedicine, updateMedicine, archiveMedicine } = useData();
+  const existing = mode.kind === "edit" ? mode.medicine : undefined;
 
   const [name, setName] = useState(existing?.name ?? "");
   const [dosage, setDosage] = useState(existing?.dosage ?? "");
@@ -160,7 +184,7 @@ function AddMedicineForm({ existing }: { existing: Medicine | undefined }) {
         member_id: memberId,
         days,
       };
-      if (existing) await updateMedicine(existing.id, input);
+      if (mode.kind === "edit") await updateMedicine(mode.medicine.id, input);
       else await addMedicine(input);
       router.back();
     } catch (requestError) {

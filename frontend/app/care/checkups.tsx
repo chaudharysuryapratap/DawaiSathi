@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, AppState, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { LoadingState, PrimaryButton } from "@/src/components/dawai-ui";
@@ -20,7 +20,10 @@ export default function CheckupsScreen() {
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout> | undefined;
-    const updateNow = () => {
+    let active = true;
+    const resyncTime = () => {
+      if (!active) return;
+      if (timeout !== undefined) clearTimeout(timeout);
       const currentTime = Date.now();
       setNow(currentTime);
       const nextBoundary = checkups.reduce((next, checkup) => {
@@ -28,13 +31,33 @@ export default function CheckupsScreen() {
         return scheduledAt > currentTime ? Math.min(next, scheduledAt) : next;
       }, Number.POSITIVE_INFINITY);
       if (Number.isFinite(nextBoundary)) {
-        timeout = setTimeout(updateNow, Math.min(nextBoundary - currentTime + 1, 2_147_483_647));
+        timeout = setTimeout(
+          resyncTime,
+          Math.min(nextBoundary - currentTime + 1, 2_147_483_647),
+        );
       }
     };
 
-    updateNow();
+    resyncTime();
+    const appStateSubscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") resyncTime();
+    });
+    const handleVisible = () => {
+      if (document.visibilityState === "visible") resyncTime();
+    };
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisible);
+      window.addEventListener("focus", resyncTime);
+    }
+
     return () => {
+      active = false;
       if (timeout !== undefined) clearTimeout(timeout);
+      appStateSubscription.remove();
+      if (Platform.OS === "web" && typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisible);
+        window.removeEventListener("focus", resyncTime);
+      }
     };
   }, [checkups]);
   const upcoming = useMemo(
