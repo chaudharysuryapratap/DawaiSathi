@@ -75,6 +75,7 @@ function mountAuthProvider(platform, secureStore, localStorage) {
   let restoreEffect;
   let authValue;
   let accessToken = null;
+  let currentAccountCalls = 0;
   const account = { id: "account-1", name: "Test Account", email: "test@example.com" };
   const storage = new (loadStorage(platform, secureStore, localStorage))();
   const context = { Provider: "AuthProvider" };
@@ -99,7 +100,10 @@ function mountAuthProvider(platform, secureStore, localStorage) {
     },
   };
   const api = {
-    currentAccount: async () => account,
+    currentAccount: async () => {
+      currentAccountCalls += 1;
+      return account;
+    },
     login: async () => ({ access_token: "opaque-session-token", user: account }),
     register: async () => ({ access_token: "opaque-session-token", user: account }),
   };
@@ -148,6 +152,9 @@ function mountAuthProvider(platform, secureStore, localStorage) {
     get accessToken() {
       return accessToken;
     },
+    get currentAccountCalls() {
+      return currentAccountCalls;
+    },
     get restoreEffect() {
       return restoreEffect;
     },
@@ -161,13 +168,13 @@ async function settleRestore(provider) {
   return provider.render();
 }
 
-test("native AuthProvider restoration never sends the colon legacy key to SecureStore", async () => {
+test("native AuthProvider restores persisted sessions without sending the colon key to SecureStore", async () => {
   const secureCalls = [];
   const secureStore = {
     async getItemAsync(key) {
       secureCalls.push(["get", key]);
       assert.notEqual(key, "dawaisathi:authToken");
-      return null;
+      return JSON.stringify("opaque-existing-native-session");
     },
     async setItemAsync(key) {
       secureCalls.push(["set", key]);
@@ -180,9 +187,11 @@ test("native AuthProvider restoration never sends the colon legacy key to Secure
   const auth = await settleRestore(provider);
 
   assert.deepEqual(secureCalls, [["get", "dawaisathi_authToken"]]);
-  assert.equal(auth.status, "signedOut");
+  assert.equal(auth.status, "signedIn");
+  assert.equal(auth.user, provider.account);
   assert.equal(auth.error, null);
-  assert.equal(provider.accessToken, null);
+  assert.equal(provider.accessToken, "opaque-existing-native-session");
+  assert.equal(provider.currentAccountCalls, 1);
 });
 
 test("web AuthProvider restoration reads the existing colon-key localStorage session", async () => {
