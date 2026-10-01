@@ -6,8 +6,6 @@ import { getErrorMessage } from "../error-message";
 export type StorageItemKey = string;
 export type StorageItemValue = string | number | boolean | null;
 
-const SECURE_STORAGE_KEY_PATTERN = /^[A-Za-z0-9._-]+$/;
-
 export class StorageOperationError extends Error {
   constructor(operation: string, cause: unknown) {
     const reason = getErrorMessage(cause, "The platform reported an unknown storage error");
@@ -22,7 +20,7 @@ export type AssertNoExtras<T extends never> = T;
 
 export abstract class StorageBase {
   protected validateSecureKey(key: StorageItemKey): void {
-    if (typeof key !== "string" || !SECURE_STORAGE_KEY_PATTERN.test(key)) {
+    if (typeof key !== "string" || !key.length || /[^A-Za-z0-9._-]/.test(key)) {
       throw new Error(
         'Invalid secure storage key. Keys must not be empty and contain only alphanumeric characters, ".", "-", and "_".',
       );

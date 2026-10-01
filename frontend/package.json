@@ -10,7 +10,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test:storage": "node --test scripts/storage-web.test.cjs scripts/storage-native.test.cjs scripts/auth-errors.test.cjs"
+    "test:storage": "node --test scripts/storage-web.test.cjs scripts/storage-native.test.cjs scripts/auth-provider-storage.test.cjs scripts/auth-errors.test.cjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "57.0.16",

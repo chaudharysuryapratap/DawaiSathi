@@ -114,6 +114,10 @@ test("native secure storage round-trips valid keys and rejects invalid keys befo
     "white space",
     "token/part",
     "café",
+    "auth-token\n",
+    "auth-token\r",
+    "auth-token\u2028",
+    "auth-token\u2029",
     undefined,
     null,
   ]) {
