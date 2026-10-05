@@ -147,6 +147,11 @@ const query = (params: Record<string, string | number | null | undefined>) => {
 };
 
 export const api = {
+  googleLogin: (input: { id_token: string; password?: string; invitation_token?: string; bootstrap_token?: string }) =>
+    request<{ access_token: string; user: Account }>("/auth/google", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
   register: (input: { name: string; email: string; password: string; bootstrap_token?: string; invitation_token?: string }) =>
     request<{ access_token: string; user: Account }>("/auth/register", {
       method: "POST",

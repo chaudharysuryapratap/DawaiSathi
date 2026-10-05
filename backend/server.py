@@ -12,6 +12,9 @@ import secrets
 import uuid
 
 import jwt
+from google.auth.exceptions import GoogleAuthError, TransportError
+from google.auth.transport.requests import Request as GoogleRequest
+from google.oauth2 import id_token as google_id_token
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.security import OAuth2PasswordBearer
@@ -20,6 +23,7 @@ from fastapi.responses import FileResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
 
 
 ROOT_DIR = Path(__file__).parent
@@ -43,6 +47,7 @@ cors_origins = [
 ]
 AUTH_SECRET = os.environ.get("DAWAISATHI_AUTH_SECRET")
 BOOTSTRAP_TOKEN = os.environ.get("DAWAISATHI_BOOTSTRAP_TOKEN")
+GOOGLE_WEB_CLIENT_ID = os.environ.get("GOOGLE_WEB_CLIENT_ID", "").strip()
 MEDIA_ROOT = Path(
     os.environ.get("DAWAISATHI_MEDIA_DIR", ROOT_DIR / "data" / "medicine-images")
 ).resolve()
@@ -359,6 +364,31 @@ class AccountRegistration(BaseModel):
 class AccountLogin(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=72)
+
+
+class GoogleAccountLogin(BaseModel):
+    id_token: str = Field(min_length=1, max_length=10000)
+    password: Optional[str] = Field(default=None, max_length=72)
+    bootstrap_token: Optional[str] = Field(default=None, max_length=200)
+    invitation_token: Optional[str] = Field(default=None, max_length=200)
+
+
+def verify_google_identity(token: str) -> dict:
+    if not GOOGLE_WEB_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured yet. Please use email.")
+    try:
+        claims = google_id_token.verify_oauth2_token(
+            token,
+            lambda *args, **kwargs: GoogleRequest()(*args, **{**kwargs, "timeout": 10}),
+            GOOGLE_WEB_CLIENT_ID,
+        )
+    except TransportError as error:
+        raise HTTPException(status_code=503, detail="Google could not be reached. Try again.") from error
+    except (ValueError, GoogleAuthError) as error:
+        raise HTTPException(status_code=401, detail="Google sign-in could not be verified. Try again.") from error
+    if not claims.get("sub") or claims.get("email_verified") is not True or not claims.get("email"):
+        raise HTTPException(status_code=401, detail="A verified Google email is required.")
+    return claims
 
 
 class Account(BaseModel):
@@ -946,6 +976,7 @@ async def startup_event() -> None:
     await ensure_family_groups()
 
     await db.users.create_index("email", unique=True, name="uniq_user_email")
+    await db.users.create_index("google_sub", unique=True, sparse=True, name="uniq_google_identity")
     await db.users.create_index(
         "is_owner",
         unique=True,
@@ -975,6 +1006,10 @@ async def startup_event() -> None:
 
 @auth_router.post("/register", response_model=AccountSession)
 async def register_account(input: AccountRegistration):
+    return await _register_account(input)
+
+
+async def _register_account(input: AccountRegistration, google_subject: Optional[str] = None):
     if not AUTH_SECRET or len(AUTH_SECRET.encode("utf-8")) < 32:
         raise HTTPException(status_code=503, detail="Authentication is not configured")
     if len(input.password.encode("utf-8")) > 72:
@@ -1008,6 +1043,8 @@ async def register_account(input: AccountRegistration):
         "is_owner": owner_registration,
         "created_at": now_iso(),
     }
+    if google_subject:
+        user["google_sub"] = google_subject
     try:
         await db.users.insert_one(user)
     except DuplicateKeyError as error:
@@ -1061,6 +1098,48 @@ async def login_account(input: AccountLogin):
 @auth_router.get("/me", response_model=Account)
 async def current_account(user: dict = Depends(require_authenticated_user)):
     return _account_public(user)
+
+
+@auth_router.post("/google", response_model=AccountSession)
+async def google_account_login(input: GoogleAccountLogin):
+    if not AUTH_SECRET or len(AUTH_SECRET.encode("utf-8")) < 32:
+        raise HTTPException(status_code=503, detail="Authentication is not configured")
+    identity = await run_in_threadpool(verify_google_identity, input.id_token)
+    subject = identity["sub"]
+    user = await db.users.find_one({"google_sub": subject}, {"_id": 0})
+    if user:
+        return _issue_session(user)
+    email = str(identity["email"]).strip().lower()
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if user:
+        if user.get("google_sub"):
+            raise HTTPException(status_code=409, detail="This account is already connected to another Google account.")
+        if not input.password:
+            raise HTTPException(status_code=409, detail="Enter your existing DawaiSathi password to connect this Google account.")
+        if len(input.password.encode("utf-8")) > 72 or not bcrypt.checkpw(
+            input.password.encode("utf-8"), user["password_hash"].encode("ascii")
+        ):
+            raise HTTPException(status_code=401, detail="Your DawaiSathi password is incorrect.")
+        try:
+            linked = await db.users.update_one(
+                {"id": user["id"], "google_sub": {"$exists": False}},
+                {"$set": {"google_sub": subject}},
+            )
+        except DuplicateKeyError as error:
+            raise HTTPException(status_code=409, detail="This Google account is already connected. Try signing in again.") from error
+        if linked.modified_count != 1:
+            raise HTTPException(status_code=409, detail="The account changed. Try signing in again.")
+        return _issue_session(user)
+    return await _register_account(
+        AccountRegistration(
+            email=email,
+            name=(str(identity.get("name") or email.split("@")[0]).strip() or "Family member")[:60],
+            password=secrets.token_urlsafe(32),
+            bootstrap_token=input.bootstrap_token,
+            invitation_token=input.invitation_token,
+        ),
+        google_subject=subject,
+    )
 
 
 @api_router.get("/")

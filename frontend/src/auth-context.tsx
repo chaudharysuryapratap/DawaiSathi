@@ -20,6 +20,7 @@ type AuthState = {
   user: Account | null;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
+  googleLogin: (input: { id_token: string; password?: string; invitation_token?: string; bootstrap_token?: string }) => Promise<void>;
   register: (input: {
     name: string;
     email: string;
@@ -119,6 +120,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setStatus("signedIn");
   }, []);
 
+  const googleLogin = useCallback(async (input: { id_token: string; password?: string; invitation_token?: string; bootstrap_token?: string }) => {
+    await saveSession(await api.googleLogin(input));
+  }, [saveSession]);
+
   const login = useCallback(async (email: string, password: string) => {
     setAccessToken(null);
     setUser(null);
@@ -186,8 +191,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ status, user, error, login, register, logout, retry }),
-    [status, user, error, login, register, logout, retry],
+    () => ({ status, user, error, login, googleLogin, register, logout, retry }),
+    [status, user, error, login, googleLogin, register, logout, retry],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -36,6 +36,11 @@ import { Appearance, StyleSheet, useColorScheme } from "react-native";
 export type ColorScheme = "light" | "dark";
 
 const light = {
+  welcomeHeader: "#079E9B",
+  welcomeGradientTop: "#8DD2CE",
+  welcomeGradientMiddle: "#D5E9E0",
+  welcomeGradientBottom: "#F3EBD4",
+  welcomeBadge: "#E7F2E9",
   // ---------------------------------------------------------------------------
   // Surfaces: backgrounds, from the screen down to small fills.
   // Each `on` key is the text and icon color for that background.
