@@ -7,32 +7,36 @@ import { ErrorState, LoadingState, ScreenShell } from "@/src/components/dawai-ui
 import { useData } from "@/src/data-context";
 import { makeStyles, useTheme } from "@/src/theme";
 
-type CareLinkProps = {
+type CareAction = {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   detail: string;
+  accessibilityHint: string;
+  testID: string;
   onPress: () => void;
-  testID?: string;
-  accent?: string;
 };
 
-function CareLink({ icon, title, detail, onPress, testID, accent }: CareLinkProps) {
+function CareActionCard({ icon, title, detail, accessibilityHint, testID, onPress }: CareAction) {
   const styles = useStyles();
   const { colors } = useTheme();
+
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${title}. ${detail}`}
+      accessibilityHint={accessibilityHint}
       testID={testID}
       onPress={onPress}
-      style={({ pressed }) => [styles.link, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
     >
-      <View style={[styles.linkIcon, accent ? { backgroundColor: accent } : null]}>
-        <Ionicons name={icon} size={19} color={accent ? "#FFFFFF" : colors.brandPrimary} />
+      <View style={styles.actionIcon}>
+        <Ionicons name={icon} size={28} color={colors.brandPrimary} />
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.linkTitle}>{title}</Text>
-        <Text style={styles.linkDetail}>{detail}</Text>
+      <View style={styles.actionCopy}>
+        <Text style={styles.actionTitle}>{title}</Text>
+        <Text style={styles.actionDetail}>{detail}</Text>
       </View>
-      <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+      <Ionicons name="chevron-forward" size={24} color={colors.muted} />
     </Pressable>
   );
 }
@@ -40,124 +44,99 @@ function CareLink({ icon, title, detail, onPress, testID, accent }: CareLinkProp
 export default function CareScreen() {
   const router = useRouter();
   const styles = useStyles();
-  const { members, medicines, archivedMedicines, checkups, loading, error, refresh } = useData();
+  const { loading, error, refresh } = useData();
+
+  const actions: CareAction[] = [
+    {
+      icon: "medical-outline",
+      title: "Medicines",
+      detail: "Add, edit, or refill medicines",
+      accessibilityHint: "Opens your medicine list and editing tools",
+      testID: "care-medicines",
+      onPress: () => router.push("/care/medicines"),
+    },
+    {
+      icon: "calendar-outline",
+      title: "Appointments",
+      detail: "View or add doctor appointments",
+      accessibilityHint: "Opens your appointments and calendar",
+      testID: "care-appointments",
+      onPress: () => router.push("/care/calendar"),
+    },
+    {
+      icon: "document-text-outline",
+      title: "Prescriptions",
+      detail: "View, upload, or scan prescriptions",
+      accessibilityHint: "Opens your saved prescriptions and prescription actions",
+      testID: "care-prescriptions",
+      onPress: () => router.push("/care/prescription"),
+    },
+    {
+      icon: "people-outline",
+      title: "Family management",
+      detail: "Manage family members and access",
+      accessibilityHint: "Opens family members, invitations, and access settings",
+      testID: "care-family-management",
+      onPress: () => router.push("/care/family-management"),
+    },
+  ];
 
   return (
     <ScreenShell testID="care-screen" header={<AppHeader />}>
       {loading ? (
-        <LoadingState label="Loading your Care hub" />
+        <LoadingState label="Loading Care" />
       ) : error ? (
         <ErrorState message={error} onRetry={refresh} />
       ) : (
-        <>
+        <View style={styles.content}>
           <View style={styles.headline}>
-            <Text style={styles.eyebrow}>CARE</Text>
-            <Text style={styles.title}>What are you managing?</Text>
-            <Text style={styles.subtitle}>Family, medicines, calendar, and prescriptions — organised in one place.</Text>
+            <Text style={styles.title}>Care</Text>
+            <Text style={styles.subtitle}>
+              Manage medicines, appointments, prescriptions, and family.
+            </Text>
           </View>
 
-          <Section title="Family">
-            <CareLink
-              icon="people-outline"
-              title="My Family"
-              detail={`${members.length} ${members.length === 1 ? "member" : "members"}`}
-              onPress={() => router.push("/care/family")}
-              testID="care-family"
-            />
-            {members.slice(0, 4).map((member) => (
-              <CareLink
-                key={member.id}
-                icon="person-circle-outline"
-                title={member.name}
-                detail={member.is_primary ? "Primary member" : member.role || "Member"}
-                onPress={() => router.push({ pathname: "/care/family", params: { id: member.id } })}
-                testID={`care-member-${member.id}`}
-                accent={member.color}
-              />
+          <View style={styles.actionList}>
+            {actions.map((action) => (
+              <CareActionCard key={action.testID} {...action} />
             ))}
-          </Section>
-
-          <Section title="Care tools">
-            <CareLink
-              icon="medical-outline"
-              title="Medicines"
-              detail={`${medicines.length} active${archivedMedicines.length ? ` · ${archivedMedicines.length} archived` : ""}`}
-              onPress={() => router.push("/care/medicines")}
-              testID="care-medicines"
-            />
-            <CareLink
-              icon="calendar-outline"
-              title="Schedule"
-              detail={`Calendar · ${checkups.length} ${checkups.length === 1 ? "checkup" : "checkups"}`}
-              onPress={() => router.push("/care/calendar")}
-              testID="care-schedule"
-            />
-            <CareLink
-              icon="scan-outline"
-              title="Prescription"
-              detail="Scan · Upload · Review with AI"
-              onPress={() => router.push("/care/prescription")}
-              testID="care-prescription"
-            />
-          </Section>
-
-          <Section title="Family management">
-            <CareLink
-              icon="settings-outline"
-              title="Family management"
-              detail="Invite, rename, roles, join requests"
-              onPress={() => router.push("/care/family-management")}
-              testID="care-family-management"
-            />
-          </Section>
-        </>
+          </View>
+        </View>
       )}
     </ScreenShell>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  const styles = useStyles();
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionLabel}>{title.toUpperCase()}</Text>
-      <View style={styles.card}>{children}</View>
-    </View>
-  );
-}
-
 const useStyles = makeStyles((colors) =>
   StyleSheet.create({
-    headline: { gap: 4 },
-    eyebrow: { color: colors.brandPrimary, fontSize: 12, fontWeight: "700", letterSpacing: 1.2 },
-    title: { color: colors.onSurface, fontSize: 28, fontWeight: "800", letterSpacing: -0.5 },
-    subtitle: { color: colors.muted, fontSize: 14, lineHeight: 20 },
-    section: { gap: 8 },
-    sectionLabel: { color: colors.muted, fontSize: 11, fontWeight: "800", letterSpacing: 1 },
-    card: {
-      backgroundColor: colors.surfaceSecondary,
-      borderRadius: 20,
-      paddingHorizontal: 14,
-      overflow: "hidden",
-    },
-    link: {
-      minHeight: 72,
+    content: { gap: 24 },
+    headline: { gap: 6 },
+    title: { color: colors.onSurface, fontSize: 32, fontWeight: "800", letterSpacing: -0.6 },
+    subtitle: { color: colors.muted, fontSize: 16, lineHeight: 23 },
+    actionList: { gap: 14 },
+    actionCard: {
+      minHeight: 88,
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.divider,
+      gap: 16,
+      paddingHorizontal: 18,
+      paddingVertical: 14,
+      borderRadius: 20,
+      backgroundColor: colors.surfaceSecondary,
+      borderWidth: 1,
+      borderColor: colors.divider,
     },
-    linkIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
-      backgroundColor: colors.brandTertiary,
+    actionIcon: {
+      width: 52,
+      height: 52,
+      borderRadius: 16,
       alignItems: "center",
       justifyContent: "center",
+      backgroundColor: colors.brandTertiary,
     },
-    linkTitle: { color: colors.onSurface, fontSize: 15, fontWeight: "700" },
-    linkDetail: { color: colors.muted, fontSize: 12, marginTop: 2 },
-    pressed: { opacity: 0.8 },
+    actionCopy: { flex: 1, gap: 4 },
+    actionTitle: { color: colors.onSurface, fontSize: 19, fontWeight: "800" },
+    actionDetail: { color: colors.muted, fontSize: 15, lineHeight: 20 },
+    pressed: { opacity: 0.78 },
   }),
 );
