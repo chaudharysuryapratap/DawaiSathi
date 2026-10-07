@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,10 +24,14 @@ type Props = {
   scrollable?: boolean;
   children: React.ReactNode;
   testID?: string;
+  appearance?: "default" | "family";
+  headerAccessory?: React.ReactNode;
 };
 
-export function BottomSheet({ visible, onClose, title, description, footer, scrollable = true, children, testID }: Props) {
+export function BottomSheet({ visible, onClose, title, description, footer, scrollable = true, children, testID, appearance = "default", headerAccessory }: Props) {
   const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  const maxSheetHeight = Math.min(height * 0.92, height - insets.top);
   const styles = useStyles();
   const { colors } = useTheme();
   const translate = useSharedValue(400);
@@ -44,8 +49,9 @@ export function BottomSheet({ visible, onClose, title, description, footer, scro
       {title ? (
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.title}>{title}</Text>
-            {description ? <Text style={styles.description}>{description}</Text> : null}
+            {headerAccessory ? <View style={{ marginBottom: 16 }}>{headerAccessory}</View> : null}
+            <Text accessibilityRole="header" style={[styles.title, appearance === "family" && styles.familyTitle]}>{title}</Text>
+            {description ? <Text style={[styles.description, appearance === "family" && styles.familyDescription]}>{description}</Text> : null}
           </View>
           <Pressable
             testID="sheet-close-button"
@@ -58,7 +64,7 @@ export function BottomSheet({ visible, onClose, title, description, footer, scro
         </View>
       ) : null}
       {scrollable ? (
-        <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+        <ScrollView style={styles.scrollBody} contentContainerStyle={[styles.body, !footer && { paddingBottom: 16 + insets.bottom }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator>
           {children}
         </ScrollView>
       ) : (
@@ -81,8 +87,8 @@ export function BottomSheet({ visible, onClose, title, description, footer, scro
           onPress={onClose}
           testID={testID ? `${testID}-backdrop` : undefined}
         />
-        <Animated.View style={[styles.sheet, animated]} testID={testID}>
-          <View style={[styles.sheetInner, { paddingTop: 10 }]}>{containerBody}</View>
+        <Animated.View style={[styles.sheet, { maxHeight: maxSheetHeight }, animated]} testID={testID}>
+          <View style={[styles.sheetInner, appearance === "family" && styles.familySheet, { paddingTop: 10, maxHeight: maxSheetHeight }]}>{containerBody}</View>
         </Animated.View>
       </View>
     </Modal>
@@ -107,6 +113,7 @@ const useStyles = makeStyles((colors) =>
       elevation: 1,
     },
     sheetInner: {
+      flexShrink: 1,
       backgroundColor: colors.surface,
       borderTopLeftRadius: 28,
       borderTopRightRadius: 28,
@@ -118,6 +125,7 @@ const useStyles = makeStyles((colors) =>
       elevation: 12,
     },
     handle: {
+      flexShrink: 0,
       alignSelf: "center",
       width: 40,
       height: 4,
@@ -126,6 +134,7 @@ const useStyles = makeStyles((colors) =>
       marginBottom: 12,
     },
     headerRow: {
+      flexShrink: 0,
       flexDirection: "row",
       alignItems: "flex-start",
       gap: 10,
@@ -136,6 +145,9 @@ const useStyles = makeStyles((colors) =>
       fontSize: 20,
       fontWeight: "800",
     },
+    familySheet: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 30, borderTopRightRadius: 30 },
+    familyTitle: { color: "#090D15", fontSize: 28, letterSpacing: -0.7 },
+    familyDescription: { color: "#737B8B", fontSize: 14, lineHeight: 21, marginTop: 7 },
     description: {
       color: colors.muted,
       fontSize: 13,
@@ -153,7 +165,9 @@ const useStyles = makeStyles((colors) =>
       paddingBottom: 16,
       gap: 14,
     },
+    scrollBody: { flexShrink: 1, minHeight: 0 },
     footer: {
+      flexShrink: 0,
       paddingTop: 12,
       borderTopWidth: 1,
       borderTopColor: colors.divider,

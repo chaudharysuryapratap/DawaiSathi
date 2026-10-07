@@ -5,11 +5,13 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Annotated, List, Literal, Optional
 import bcrypt
+import binascii
 import hmac
 import logging
 import os
 import secrets
 import uuid
+import re
 
 import jwt
 from google.auth.exceptions import GoogleAuthError, TransportError
@@ -62,6 +64,8 @@ MEDICINE_IMAGE_TYPES = {
 }
 
 app = FastAPI(title="DawaiSathi API")
+ACTIVE_FAMILY = {"deleted_at": {"$exists": False}}
+FAMILY_RECOVERY_DAYS = 30
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 
@@ -94,7 +98,7 @@ async def require_authenticated_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     groups = await db.family_groups.find(
-        {"user_ids": user["id"]},
+        {"user_ids": user["id"], **ACTIVE_FAMILY},
         {"_id": 0, "id": 1},
     ).to_list(100)
     user["family_group_ids"] = [group["id"] for group in groups]
@@ -107,6 +111,13 @@ async def authorize_request_scope(
     user: dict = Depends(require_authenticated_user),
 ) -> None:
     path_params = request.path_params
+    if request.method == "GET" and request.url.path == "/api/family-groups/deleted":
+        return  # The handler lists only this account's recoverable families.
+    if request.method == "POST" and request.url.path.endswith("/restore") and path_params.get("family_group_id"):
+        group = await db.family_groups.find_one({"id": path_params["family_group_id"], "owner_user_id": user["id"]})
+        if not group:
+            raise HTTPException(status_code=403, detail="Only the family owner can restore this group")
+        return
     query_group_id = request.query_params.get("family_group_id")
     group_id = path_params.get("family_group_id") or query_group_id
     payload = {}
@@ -120,11 +131,17 @@ async def authorize_request_scope(
 
     if group_id:
         group = await db.family_groups.find_one(
-            {"id": group_id, "user_ids": user["id"]},
+            {"id": group_id, "user_ids": user["id"], **ACTIVE_FAMILY},
             {"_id": 0},
         )
         if not group:
             raise HTTPException(status_code=403, detail="You do not have access to this family group")
+        if path_params.get("member_id"):
+            member = await db.members.find_one({"id": path_params["member_id"], "family_group_ids": group_id})
+            if not member:
+                raise HTTPException(status_code=404, detail="Member not found in this family")
+            if request.method == "DELETE" and group.get("owner_user_id") != user["id"]:
+                raise HTTPException(status_code=403, detail="Only the family owner can remove a profile")
         if path_params.get("family_group_id") and request.method == "PATCH":
             if group.get("owner_user_id") != user["id"]:
                 raise HTTPException(status_code=403, detail="Only the family owner can rename this group")
@@ -155,13 +172,13 @@ async def authorize_request_scope(
             if not entity:
                 raise HTTPException(status_code=404, detail="Record not found")
             if not await db.family_groups.find_one(
-                {"id": entity.get("family_group_id"), "user_ids": user["id"]},
+                {"id": entity.get("family_group_id"), "user_ids": user["id"], **ACTIVE_FAMILY},
                 {"_id": 0, "id": 1},
             ):
                 raise HTTPException(status_code=403, detail="You do not have access to this family group")
             target_group_id = payload.get("family_group_id")
             if target_group_id and not await db.family_groups.find_one(
-                {"id": target_group_id, "user_ids": user["id"]},
+                {"id": target_group_id, "user_ids": user["id"], **ACTIVE_FAMILY},
                 {"_id": 0, "id": 1},
             ):
                 raise HTTPException(status_code=403, detail="You do not have access to the target family group")
@@ -196,7 +213,7 @@ async def authorize_request_scope(
                 )
         return
 
-    if request.url.path.endswith("/family-invitations/accept"):
+    if request.url.path.endswith(("/family-invitations/accept", "/family-code/accept")):
         return
     if request.method == "GET" and request.url.path.endswith("/family-groups"):
         return
@@ -204,7 +221,7 @@ async def authorize_request_scope(
         return
     if request.url.path.endswith("/members") and not group_id:
         return
-    if request.url.path.endswith("/medicine-images"):
+    if request.url.path.endswith(("/medicine-images", "/voice-notes")):
         return
     if request.url.path.endswith("/notifications/preferences"):
         return
@@ -215,9 +232,42 @@ async def authorize_request_scope(
         raise HTTPException(status_code=422, detail="A family group is required for this request")
 
 
+
+VOICE_MEDIA_ROOT = Path(os.environ.get("DAWAISATHI_VOICE_MEDIA_DIR", ROOT_DIR / "data" / "voice-notes")).resolve()
+VOICE_MAX_BYTES = 5 * 1024 * 1024
+
+
+async def can_access_voice_note(url: str, user: dict) -> bool:
+    if await db.voice_notes.find_one({"voice_note_url": url, "owner_user_id": user["id"]}):
+        return True
+    query = {"voice_note_url": url, "family_group_id": {"$in": user.get("family_group_ids", [])}}
+    for collection in (db.medicines, db.checkups, db.eye_drop_protocols):
+        if await collection.find_one(query, {"_id": 0, "id": 1}):
+            return True
+    return False
+
+
+async def validate_voice_attachment(request: Request, user: dict = Depends(require_authenticated_user)):
+    if request.method not in ("POST", "PATCH") or not request.url.path.startswith(
+        ("/api/medicines", "/api/checkups", "/api/eye-drop-protocols")
+    ):
+        return
+    try:
+        body = await request.json()
+    except ValueError:
+        return
+    if not isinstance(body, dict):
+        return
+    url = body.get("voice_note_url")
+    if url is None or url == "":
+        return
+    if not isinstance(url, str) or not url.startswith("/media/voice-notes/") or not await can_access_voice_note(url, user):
+        raise HTTPException(status_code=422, detail="Choose a voice note you have access to")
+
+
 api_router = APIRouter(
     prefix="/api",
-    dependencies=[Depends(require_authenticated_user), Depends(authorize_request_scope)],
+    dependencies=[Depends(require_authenticated_user), Depends(authorize_request_scope), Depends(validate_voice_attachment)],
 )
 auth_router = APIRouter(prefix="/api/auth")
 
@@ -297,6 +347,7 @@ class MemberUpdate(BaseModel):
 
 
 class MedicineCreate(BaseModel):
+    voice_note_url: str = Field(default="", max_length=500)
     name: str = Field(min_length=1, max_length=80)
     dosage: str = Field(min_length=1, max_length=40)
     frequency: str = Field(default="Daily", max_length=30)
@@ -311,6 +362,7 @@ class MedicineCreate(BaseModel):
 
 
 class Medicine(BaseModel):
+    voice_note_url: str = Field(default="", max_length=500)
     id: str
     name: str
     dosage: str
@@ -329,6 +381,7 @@ class Medicine(BaseModel):
 
 
 class MedicineUpdate(BaseModel):
+    voice_note_url: str = Field(default="", max_length=500)
     name: Optional[str] = Field(default=None, min_length=1, max_length=80)
     dosage: Optional[str] = Field(default=None, min_length=1, max_length=40)
     frequency: Optional[str] = Field(default=None, max_length=30)
@@ -507,6 +560,7 @@ class EyeDropStep(BaseModel):
 
 
 class EyeDropProtocolCreate(BaseModel):
+    voice_note_url: str = Field(default="", max_length=500)
     name: str = Field(min_length=1, max_length=80)
     start_time: str = Field(min_length=1, max_length=10)
     interval_minutes: int = Field(default=5, ge=1, le=180)
@@ -517,6 +571,7 @@ class EyeDropProtocolCreate(BaseModel):
 
 
 class EyeDropProtocolUpdate(BaseModel):
+    voice_note_url: str = Field(default="", max_length=500)
     name: Optional[str] = Field(default=None, min_length=1, max_length=80)
     start_time: Optional[str] = Field(default=None, min_length=1, max_length=10)
     interval_minutes: Optional[int] = Field(default=None, ge=1, le=180)
@@ -528,6 +583,7 @@ class EyeDropProtocolUpdate(BaseModel):
 
 
 class EyeDropProtocol(BaseModel):
+    voice_note_url: str = Field(default="", max_length=500)
     id: str
     name: str
     start_time: str
@@ -602,6 +658,7 @@ class TodayResponse(BaseModel):
 
 
 class CheckupCreate(BaseModel):
+    voice_note_url: str = Field(default="", max_length=500)
     title: str = Field(min_length=1, max_length=120)
     doctor: str = Field(default="", max_length=80)
     location: str = Field(default="", max_length=120)
@@ -612,6 +669,7 @@ class CheckupCreate(BaseModel):
 
 
 class CheckupUpdate(BaseModel):
+    voice_note_url: str = Field(default="", max_length=500)
     title: Optional[str] = Field(default=None, min_length=1, max_length=120)
     doctor: Optional[str] = Field(default=None, max_length=80)
     location: Optional[str] = Field(default=None, max_length=120)
@@ -622,6 +680,7 @@ class CheckupUpdate(BaseModel):
 
 
 class Checkup(BaseModel):
+    voice_note_url: str = Field(default="", max_length=500)
     id: str
     title: str
     doctor: str
@@ -690,12 +749,14 @@ async def ensure_family_groups() -> None:
         await db.family_groups.insert_one(first_group)
 
     default_group_id = first_group["id"]
+    if first_group.get("deleted_at"):
+        return  # Never migrate records into a deleted family or recreate it.
     await db.members.update_many(
         {"family_group_ids": {"$exists": False}},
         {"$set": {"family_group_ids": [default_group_id]}},
     )
     await db.members.update_many(
-        {"family_group_ids": {"$size": 0}},
+        {"family_group_ids": {"$size": 0}, "explicit_membership": {"$ne": True}},
         {"$set": {"family_group_ids": [default_group_id]}},
     )
     member_ids = [
@@ -718,7 +779,7 @@ async def ensure_family_groups() -> None:
 
 
 async def get_family_group(group_id: str) -> dict:
-    group = await db.family_groups.find_one({"id": group_id}, {"_id": 0})
+    group = await db.family_groups.find_one({"id": group_id, **ACTIVE_FAMILY}, {"_id": 0})
     if not group:
         raise HTTPException(status_code=404, detail="Family group not found")
     return group
@@ -726,7 +787,7 @@ async def get_family_group(group_id: str) -> dict:
 
 async def default_family_group_id() -> str:
     await ensure_family_groups()
-    group = await db.family_groups.find_one({}, {"_id": 0}, sort=[("created_at", 1)])
+    group = await db.family_groups.find_one(ACTIVE_FAMILY, {"_id": 0}, sort=[("created_at", 1)])
     if not group:
         raise HTTPException(status_code=500, detail="Family group is not configured")
     return group["id"]
@@ -983,6 +1044,8 @@ async def startup_event() -> None:
         partialFilterExpression={"is_owner": True},
         name="uniq_bootstrap_owner",
     )
+    await db.family_groups.create_index("join_code", unique=True, sparse=True, name="uniq_family_join_code")
+    await db.family_code_attempts.create_index("expires_at", expireAfterSeconds=0, name="expire_family_code_attempts")
     await db.family_invitations.create_index(
         "token_hash",
         unique=True,
@@ -1024,6 +1087,7 @@ async def _register_account(input: AccountRegistration, google_subject: Optional
 
     owner_registration = await db.users.count_documents({}) == 0
     invitation = None
+    code_family = None
     if owner_registration:
         if not BOOTSTRAP_TOKEN:
             raise HTTPException(status_code=503, detail="Set the one-time bootstrap token before creating the owner account")
@@ -1032,7 +1096,11 @@ async def _register_account(input: AccountRegistration, google_subject: Optional
     else:
         if not input.invitation_token:
             raise HTTPException(status_code=403, detail="A family invitation is required to create an account")
-        invitation = await _invitation_for_token(input.invitation_token, email)
+        if is_family_code(input.invitation_token):
+            await limit_family_code_attempts(f"register:{email}")
+            code_family = await family_for_code(input.invitation_token)
+        else:
+            invitation = await _invitation_for_token(input.invitation_token, email)
 
     user_id = str(uuid.uuid4())
     user = {
@@ -1059,6 +1127,14 @@ async def _register_account(input: AccountRegistration, google_subject: Optional
                 "$addToSet": {"user_ids": user_id},
             },
         )
+    elif code_family:
+        joined = await db.family_groups.update_one(
+            {"id": code_family["id"], "join_code": normalize_family_code(input.invitation_token), **ACTIVE_FAMILY},
+            {"$addToSet": {"user_ids": user_id}},
+        )
+        if joined.matched_count != 1:
+            await db.users.delete_one({"id": user_id})
+            raise HTTPException(status_code=404, detail="The family no longer exists")
     else:
         claimed = await db.family_invitations.update_one(
             {"id": invitation["id"], "used_at": None},
@@ -1068,7 +1144,7 @@ async def _register_account(input: AccountRegistration, google_subject: Optional
             await db.users.delete_one({"id": user_id})
             raise HTTPException(status_code=409, detail="This invitation has already been used")
         joined = await db.family_groups.update_one(
-            {"id": invitation["family_group_id"]},
+            {"id": invitation["family_group_id"], **ACTIVE_FAMILY},
             {"$addToSet": {"user_ids": user_id}},
         )
         if joined.matched_count != 1:
@@ -1155,11 +1231,12 @@ async def health():
 @api_router.get("/family-groups", response_model=List[FamilyGroup])
 async def list_family_groups(request: Request):
     await ensure_family_groups()
-    query = {"user_ids": request.state.user["id"]}
+    query = {"user_ids": request.state.user["id"], **ACTIVE_FAMILY}
     groups = await db.family_groups.find(query, {"_id": 0}).sort("created_at", 1).to_list(100)
     result = []
     for group in groups:
         member_count = await db.members.count_documents({"family_group_ids": group["id"]})
+        await ensure_family_code(group["id"])
         result.append(FamilyGroup(**{**group, "member_count": member_count}))
     return result
 
@@ -1184,8 +1261,64 @@ async def create_family_group(input: FamilyGroupCreate, request: Request):
         "updated_at": now,
     }
     await db.family_groups.insert_one(document)
+    await ensure_family_code(document["id"])
     await db.members.update_one({"id": primary["id"]}, {"$addToSet": {"family_group_ids": document["id"]}})
     return FamilyGroup(**{**document, "member_count": 1})
+
+
+@api_router.get("/family-groups/deleted")
+async def deleted_family_groups(request: Request):
+    documents = await db.family_groups.find(
+        {"owner_user_id": request.state.user["id"], "deleted_at": {"$exists": True}, "recover_until": {"$gt": now_iso()}},
+        {"_id": 0, "id": 1, "name": 1, "recover_until": 1},
+    ).sort("deleted_at", -1).to_list(100)
+    return documents
+
+
+@api_router.delete("/family-groups/{family_group_id}")
+async def delete_family_group(family_group_id: str, request: Request):
+    group = await get_family_group(family_group_id)
+    if group.get("owner_user_id") != request.state.user["id"]:
+        raise HTTPException(status_code=403, detail="Only the family owner can delete this group")
+    deleted_at = now_utc()
+    recover_until = (deleted_at + timedelta(days=FAMILY_RECOVERY_DAYS)).isoformat()
+    # One atomic visibility switch: records and memberships stay intact for recovery.
+    # All access and invitation checks exclude deleted groups.
+    await db.family_groups.update_one(
+        {"id": family_group_id, **ACTIVE_FAMILY},
+        {"$set": {"deleted_at": deleted_at.isoformat(), "recover_until": recover_until, "updated_at": deleted_at.isoformat()}},
+    )
+    return {"ok": True, "recover_until": recover_until}
+
+
+@api_router.post("/family-groups/{family_group_id}/restore")
+async def restore_family_group(family_group_id: str, request: Request):
+    result = await db.family_groups.update_one(
+        {"id": family_group_id, "owner_user_id": request.state.user["id"], "deleted_at": {"$exists": True}, "recover_until": {"$gt": now_iso()}},
+        {"$unset": {"deleted_at": "", "recover_until": ""}, "$set": {"updated_at": now_iso()}},
+    )
+    if result.modified_count != 1:
+        raise HTTPException(status_code=409, detail="This family is already restored or its recovery period has ended")
+    return {"ok": True}
+
+
+@api_router.delete("/family-groups/{family_group_id}/members/{member_id}")
+async def remove_family_profile(family_group_id: str, member_id: str):
+    member = await db.members.find_one({"id": member_id, "family_group_ids": family_group_id})
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found in this family")
+    if member.get("is_primary"):
+        raise HTTPException(status_code=400, detail="Primary member cannot be removed")
+    # Preserve records, including their historical names. No account is deleted.
+    # Scope the change to this family even if the profile belongs to other families.
+    for collection in ("medicines", "eye_drop_protocols", "checkups", "dose_logs", "protocol_step_logs", "missed_dose_events"):
+        await db[collection].update_many(
+            {"family_group_id": family_group_id, "member_id": member_id},
+            {"$set": {"member_id": None}},
+        )
+    await db.family_groups.update_one({"id": family_group_id}, {"$pull": {"member_ids": member_id}})
+    await db.members.update_one({"id": member_id}, {"$pull": {"family_group_ids": family_group_id}, "$set": {"explicit_membership": True}})
+    return {"ok": True}
 
 
 @api_router.patch("/family-groups/{family_group_id}", response_model=FamilyGroup)
@@ -1200,6 +1333,84 @@ async def rename_family_group(family_group_id: str, input: FamilyGroupUpdate):
     group["updated_at"] = now
     member_count = await db.members.count_documents({"family_group_ids": family_group_id})
     return FamilyGroup(**{**group, "member_count": member_count})
+
+
+
+def normalize_family_code(value: str) -> str:
+    return re.sub(r"[\\s-]", "", value).upper()
+
+
+def is_family_code(value: str) -> bool:
+    return bool(re.fullmatch(r"[0-9A-F]{16}", normalize_family_code(value)))
+
+
+async def ensure_family_code(group_id: str) -> str:
+    for _ in range(8):
+        group = await db.family_groups.find_one({"id": group_id, **ACTIVE_FAMILY})
+        if not group:
+            raise HTTPException(status_code=404, detail="Family not found")
+        if group.get("join_code"):
+            return group["join_code"]
+        code = secrets.token_hex(8).upper()
+        try:
+            await db.family_groups.update_one(
+                {"id": group_id, "join_code": {"$exists": False}},
+                {"$set": {"join_code": code}},
+            )
+        except DuplicateKeyError:
+            continue
+    raise HTTPException(status_code=503, detail="Could not prepare the family code. Try again")
+
+
+async def family_for_code(value: str) -> dict:
+    code = normalize_family_code(value)
+    if not is_family_code(code):
+        raise HTTPException(status_code=404, detail="Family code is invalid or the family was deleted")
+    group = await db.family_groups.find_one({"join_code": code, **ACTIVE_FAMILY}, {"_id": 0})
+    if not group:
+        raise HTTPException(status_code=404, detail="Family code is invalid or the family was deleted")
+    return group
+
+
+async def limit_family_code_attempts(key: str):
+    # Atomic counter shared by server processes; TTL removes old windows.
+    now = datetime.now(timezone.utc)
+    bucket = int(now.timestamp()) // 900
+    attempt_id = sha256(f"{key}:{bucket}".encode()).hexdigest()
+    await db.family_code_attempts.update_one(
+        {"_id": attempt_id},
+        {"$inc": {"count": 1}, "$setOnInsert": {"expires_at": now + timedelta(minutes=30)}},
+        upsert=True,
+    )
+    attempt = await db.family_code_attempts.find_one({"_id": attempt_id})
+    if attempt["count"] > 15:
+        raise HTTPException(status_code=429, detail="Too many family-code attempts. Try again in 15 minutes")
+
+
+class FamilyCodeAccept(BaseModel):
+    code: str = Field(min_length=1, max_length=80)
+
+
+@api_router.get("/family-groups/{family_group_id}/join-code")
+async def get_family_join_code(family_group_id: str, request: Request):
+    group = await get_family_group(family_group_id)
+    if group.get("owner_user_id") != request.state.user["id"]:
+        raise HTTPException(status_code=403, detail="Only the family owner can share its join code")
+    return {"family_group_id": family_group_id, "code": await ensure_family_code(family_group_id)}
+
+
+@api_router.post("/family-code/accept")
+async def accept_family_code(input: FamilyCodeAccept, request: Request):
+    user = request.state.user
+    await limit_family_code_attempts(f"user:{user['id']}")
+    group = await family_for_code(input.code)
+    result = await db.family_groups.update_one(
+        {"id": group["id"], "join_code": normalize_family_code(input.code), **ACTIVE_FAMILY},
+        {"$addToSet": {"user_ids": user["id"]}},
+    )
+    if result.matched_count != 1:
+        raise HTTPException(status_code=404, detail="Family no longer exists")
+    return {"ok": True, "family_group_id": group["id"]}
 
 
 @api_router.post("/family-groups/{family_group_id}/invites", response_model=FamilyInvitation)
@@ -1240,7 +1451,7 @@ async def accept_family_invitation(input: FamilyInvitationAccept, request: Reque
     if claimed.modified_count != 1:
         raise HTTPException(status_code=409, detail="This invitation has already been used")
     joined = await db.family_groups.update_one(
-        {"id": invitation["family_group_id"]},
+        {"id": invitation["family_group_id"], **ACTIVE_FAMILY},
         {"$addToSet": {"user_ids": user["id"]}},
     )
     if joined.matched_count != 1:
@@ -1404,6 +1615,7 @@ async def create_medicine(input: MedicineCreate):
         "quantity_remaining": input.quantity_total,
         "identification_cue": input.identification_cue.strip(),
         "image_url": input.image_url.strip(),
+        "voice_note_url": input.voice_note_url.strip(),
         "active": True,
         "member_id": input.member_id,
         "family_group_id": family_group_id,
@@ -1504,6 +1716,7 @@ async def create_protocol(input: EyeDropProtocolCreate):
         "start_time": input.start_time,
         "interval_minutes": input.interval_minutes,
         "steps": _build_protocol_steps(input.steps),
+        "voice_note_url": input.voice_note_url.strip(),
         "member_id": input.member_id,
         "family_group_id": input.family_group_id or await default_family_group_id(),
         "days": days,
@@ -1840,6 +2053,7 @@ async def create_checkup(input: CheckupCreate):
         "location": input.location.strip(),
         "scheduled_at": input.scheduled_at,
         "notes": input.notes.strip(),
+        "voice_note_url": input.voice_note_url.strip(),
         "member_id": input.member_id,
         "family_group_id": input.family_group_id or await default_family_group_id(),
         "created_at": now_iso(),
@@ -2044,6 +2258,65 @@ async def upcoming_checkup(member_id: Optional[str] = None, family_group_id: Opt
         if scheduled >= now:
             return Checkup(**document)
     return None
+
+
+
+class VoiceNoteUpload(BaseModel):
+    content_type: str = Field(min_length=1, max_length=80)
+    audio_base64: str = Field(min_length=1, max_length=7_000_000)
+
+
+def voice_extension(content_type: str, data: bytes) -> str:
+    content_type = content_type.split(";")[0].strip().lower()
+    if content_type in ("audio/mp4", "audio/m4a", "audio/x-m4a") and len(data) > 12 and data[4:8] == b"ftyp":
+        return ".m4a"
+    if content_type in ("audio/wav", "audio/x-wav", "audio/wave") and data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+        return ".wav"
+    if content_type in ("audio/mpeg", "audio/mp3") and (data[:3] == b"ID3" or (len(data) > 1 and data[0] == 255 and data[1] & 224 == 224)):
+        return ".mp3"
+    if content_type == "audio/webm" and data[:4] == b"\\x1a\\x45\\xdf\\xa3":
+        return ".webm"
+    if content_type in ("audio/ogg", "audio/opus") and data[:4] == b"OggS":
+        return ".ogg"
+    raise HTTPException(status_code=422, detail="Choose an M4A, MP3, WAV, WebM, or Ogg audio file")
+
+
+@api_router.post("/voice-notes")
+async def upload_voice_note(input: VoiceNoteUpload, user: dict = Depends(require_authenticated_user)):
+    try:
+        data = b64decode(input.audio_base64, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise HTTPException(status_code=422, detail="Could not read this audio file") from exc
+    if not data or len(data) > VOICE_MAX_BYTES:
+        raise HTTPException(status_code=422, detail="Voice notes must be smaller than 5 MB")
+    extension = voice_extension(input.content_type, data)
+    filename = f"{uuid.uuid4()}{extension}"
+    url = f"/media/voice-notes/{filename}"
+    VOICE_MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+    path = VOICE_MEDIA_ROOT / filename
+    path.write_bytes(data)
+    try:
+        await db.voice_notes.insert_one({
+            "voice_note_url": url, "owner_user_id": user["id"],
+            "content_type": {".m4a": "audio/mp4", ".mp3": "audio/mpeg", ".wav": "audio/wav", ".webm": "audio/webm", ".ogg": "audio/ogg"}[extension],
+            "created_at": now_iso(), "size": len(data),
+        })
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+    return {"voice_note_url": url}
+
+
+@app.get("/media/voice-notes/{filename}")
+async def get_voice_note(filename: str, user: dict = Depends(require_authenticated_user)):
+    path = (VOICE_MEDIA_ROOT / filename).resolve()
+    url = f"/media/voice-notes/{filename}"
+    if Path(filename).name != filename or path.parent != VOICE_MEDIA_ROOT or not path.is_file() or not await can_access_voice_note(url, user):
+        raise HTTPException(status_code=404, detail="Voice note not found")
+    metadata = await db.voice_notes.find_one({"voice_note_url": url})
+    if not metadata:
+        raise HTTPException(status_code=404, detail="Voice note not found")
+    return FileResponse(path, media_type=metadata["content_type"], headers={"Cache-Control": "private, no-store"})
 
 
 @app.get("/media/medicine-images/{filename}")

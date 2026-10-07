@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -25,6 +26,7 @@ type Props = {
 };
 
 export function EyeDropDetailSheet({ visible, onClose, protocol }: Props) {
+  const router = useRouter();
   const styles = useStyles();
   const { colors } = useTheme();
   const { logProtocolStep, undoProtocolStep, archiveProtocol } = useData();
@@ -96,6 +98,17 @@ export function EyeDropDetailSheet({ visible, onClose, protocol }: Props) {
           <Text style={styles.completedText}>All {total} steps taken. Great job.</Text>
         </View>
       ) : null}
+      <View style={styles.actions}>
+      <Pressable
+        testID="protocol-modify"
+        accessibilityRole="button"
+        onPress={() => { onClose(); router.push({ pathname: "/add-eye-drop-protocol", params: { id: protocol.protocol_id } }); }}
+        disabled={busy}
+        style={({ pressed }) => [styles.modifyButton, pressed && styles.pressed]}
+      >
+        <Ionicons name="pencil" size={16} color={colors.brandPrimary} />
+        <Text style={styles.modifyText}>Modify protocol</Text>
+      </Pressable>
       <Pressable
         testID="protocol-delete"
         onPress={remove}
@@ -105,6 +118,7 @@ export function EyeDropDetailSheet({ visible, onClose, protocol }: Props) {
         <Ionicons name="trash-outline" size={16} color={colors.error} />
         <Text style={styles.dangerText}>Remove protocol</Text>
       </Pressable>
+      </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </>
   );
@@ -254,7 +268,12 @@ const useStyles = makeStyles((colors) =>
       backgroundColor: colors.brandTertiary,
     },
     completedText: { color: colors.brandPrimary, fontSize: 13, fontWeight: "700" },
+    actions: { flexDirection: "row", gap: 10 },
+    modifyButton: { flex: 1, minHeight: 46, borderRadius: 14, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, paddingHorizontal: 8 },
+    modifyText: { color: colors.brandPrimary, fontSize: 13, fontWeight: "700", flexShrink: 1, textAlign: "center" },
     dangerButton: {
+      flex: 1,
+      paddingHorizontal: 8,
       minHeight: 46,
       borderRadius: 14,
       borderWidth: 1,
@@ -265,7 +284,7 @@ const useStyles = makeStyles((colors) =>
       gap: 6,
       backgroundColor: colors.surface,
     },
-    dangerText: { color: colors.error, fontSize: 13, fontWeight: "700" },
+    dangerText: { color: colors.error, fontSize: 13, fontWeight: "700", flexShrink: 1, textAlign: "center" },
     pressed: { opacity: 0.75 },
     error: { color: colors.error, fontSize: 12 },
   }),

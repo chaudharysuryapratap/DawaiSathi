@@ -2,12 +2,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ErrorState, LoadingState, PrimaryButton } from "@/src/components/dawai-ui";
+import { MedicineTimePicker } from "@/src/components/medicine-time-picker";
 import { api, authHeaders, resolveMediaUrl } from "@/src/api";
+import { VoiceNoteField, useVoiceNote } from "@/src/components/voice-note-field";
 import { useData } from "@/src/data-context";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -69,23 +71,13 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
     () =>
       StyleSheet.create({
         field: { gap: 8 },
-        label: { color: colors.onSurface, fontSize: 14, fontWeight: "700" },
         imagePreview: {
           width: "100%",
           height: 180,
           borderRadius: 16,
           backgroundColor: colors.surfaceTertiary,
         },
-        imagePlaceholder: {
-          height: 112,
-          borderRadius: 16,
-          backgroundColor: colors.surfaceSecondary,
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 6,
-        },
-        imagePlaceholderText: { color: colors.muted, fontSize: 13 },
-        imageButtons: { flexDirection: "row", alignItems: "center", gap: 12 },
+        imageButtons: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
         imageButton: {
           minHeight: 44,
           borderRadius: 12,
@@ -109,7 +101,6 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
   const [dosage, setDosage] = useState(existing?.dosage ?? "");
   const [frequency, setFrequency] = useState(existing?.frequency ?? "Daily");
   const [times, setTimes] = useState<string[]>(existing?.times ?? ["08:00"]);
-  const [customTime, setCustomTime] = useState("");
   const [instructions, setInstructions] = useState(existing?.instructions ?? "");
   const [quantity, setQuantity] = useState(existing ? String(existing.quantity_total || "") : "");
   const [identification, setIdentification] = useState(existing?.identification_cue || "");
@@ -120,31 +111,41 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
   } | null>(null);
   const [memberId, setMemberId] = useState<string | null>(existing ? existing.member_id ?? null : activeMemberId);
   const [days, setDays] = useState<number[]>(existing?.days?.length ? existing.days : [0, 1, 2, 3, 4, 5, 6]);
+  const voiceNote = useVoiceNote(existing?.voice_note_url ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const saveInFlight = useRef(false);
 
   const toggleTime = (time: string) =>
     setTimes((current) => (current.includes(time) ? current.filter((value) => value !== time) : [...current, time].sort()));
 
-  const addCustomTime = () => {
-    if (/^([01]\d|2[0-3]):[0-5]\d$/.test(customTime) && !times.includes(customTime)) {
-      setTimes((current) => [...current, customTime].sort());
-      setCustomTime("");
-    }
+  const addCustomTime = (time: string) => {
+    setTimes((current) => current.includes(time) ? current : [...current, time].sort());
   };
 
   const toggleDay = (day: number) =>
     setDays((current) => (current.includes(day) ? current.filter((value) => value !== day) : [...current, day]));
 
-  const chooseImage = async () => {
+  const chooseImage = async (source: "library" | "camera" = "library") => {
     setError(null);
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
+      if (source === "camera" && Platform.OS !== "web") {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          setError("Camera access is needed to take a photo. You can enable it in Settings or choose a photo instead.");
+          return;
+        }
+      }
+      const options: ImagePicker.ImagePickerOptions = {
         mediaTypes: ["images"],
         allowsEditing: true,
         quality: 0.8,
         base64: true,
-      });
+      };
+      const result = source === "camera"
+        ? await ImagePicker.launchCameraAsync(options)
+        : await ImagePicker.launchImageLibraryAsync(options);
       if (result.canceled) return;
       const asset = result.assets[0];
       if (!asset?.base64 || !asset.mimeType) {
@@ -153,11 +154,12 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
       }
       setSelectedImage({ base64: asset.base64, contentType: asset.mimeType });
     } catch (pickerError) {
-      setError(pickerError instanceof Error ? pickerError.message : "Could not open the photo library.");
+      setError(pickerError instanceof Error ? pickerError.message : source === "camera" ? "Could not open the camera." : "Could not open the photo library.");
     }
   };
 
-  const save = async () => {
+  const save = async (addAnother = false) => {
+    if (saveInFlight.current || voiceNote.busy) return;
     if (!name.trim() || !dosage.trim() || times.length === 0) {
       setError("Add a medicine name, dosage, and at least one reminder time.");
       return;
@@ -166,6 +168,7 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
       setError("Choose at least one day of the week.");
       return;
     }
+    saveInFlight.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -181,15 +184,33 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
         quantity_total: Number(quantity) || 0,
         identification_cue: identification.trim(),
         image_url: savedImageUrl,
+        voice_note_url: await voiceNote.save(),
         member_id: memberId,
         days,
       };
       if (mode.kind === "edit") await updateMedicine(mode.medicine.id, input);
       else await addMedicine(input);
-      router.back();
+      if (addAnother && mode.kind === "create") {
+        voiceNote.reset();
+        setName("");
+        setDosage("");
+        setFrequency("Daily");
+        setTimes(["08:00"]);
+        setInstructions("");
+        setQuantity("");
+        setIdentification("");
+        setImageUrl("");
+        setSelectedImage(null);
+        setMemberId(activeMemberId);
+        setDays([0, 1, 2, 3, 4, 5, 6]);
+        scrollRef.current?.scrollTo({ y: 0, animated: true });
+      } else {
+        router.back();
+      }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Couldn’t save this medicine.");
     } finally {
+      saveInFlight.current = false;
       setSaving(false);
     }
   };
@@ -221,63 +242,11 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
         <Text style={styles.headerTitle}>{existing ? "Edit medicine" : "Add medicine"}</Text>
         <View style={styles.close} />
       </View>
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 40 + insets.bottom }]} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} contentContainerStyle={[styles.content, { paddingBottom: 40 + insets.bottom }]} keyboardShouldPersistTaps="handled">
         <Text style={styles.intro}>{existing ? "Keep the details up to date so reminders stay useful." : "Just the essentials. You can always change these later."}</Text>
 
         <Field label="Medicine name" value={name} onChangeText={setName} placeholder="e.g. Vitamin D" autoCapitalize="words" testID="medicine-name-input" />
         <Field label="Dosage" value={dosage} onChangeText={setDosage} placeholder="e.g. 1 tablet" testID="medicine-dosage-input" />
-
-        <View style={photoStyles.field}>
-          <Text style={photoStyles.label}>Medicine photo</Text>
-          {selectedImage || imageUrl ? (
-            <Image
-              accessibilityLabel={`${name || "Medicine"} photo preview`}
-              source={{
-                uri: selectedImage
-                  ? `data:${selectedImage.contentType};base64,${selectedImage.base64}`
-                  : resolveMediaUrl(imageUrl),
-                headers: selectedImage ? undefined : authHeaders(),
-              }}
-              contentFit="cover"
-              style={photoStyles.imagePreview}
-            />
-          ) : (
-            <View style={photoStyles.imagePlaceholder}>
-              <Ionicons name="image-outline" size={26} color={colors.muted} />
-              <Text style={photoStyles.imagePlaceholderText}>Add an optional photo</Text>
-            </View>
-          )}
-          <View style={photoStyles.imageButtons}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Choose medicine photo"
-              testID="medicine-photo-choose"
-              disabled={saving}
-              onPress={() => void chooseImage()}
-              style={({ pressed }) => [photoStyles.imageButton, pressed && photoStyles.pressed]}
-            >
-              <Text style={photoStyles.imageButtonText}>
-                {selectedImage || imageUrl ? "Change photo" : "Choose photo"}
-              </Text>
-            </Pressable>
-            {selectedImage || imageUrl ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Remove medicine photo"
-                testID="medicine-photo-remove"
-                disabled={saving}
-                onPress={() => {
-                  setImageUrl("");
-                  setSelectedImage(null);
-                }}
-                style={({ pressed }) => [photoStyles.imageRemoveButton, pressed && photoStyles.pressed]}
-              >
-                <Text style={photoStyles.imageRemoveText}>Remove</Text>
-              </Pressable>
-            ) : null}
-          </View>
-          <Text style={photoStyles.helper}>JPEG, PNG, or WebP, up to 5 MB. Stored with your local backend.</Text>
-        </View>
 
         <View style={styles.field}>
           <Text style={styles.label}>Who is this for?</Text>
@@ -342,6 +311,8 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
               <Pressable
                 key={time}
                 testID={`medicine-time-${time}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: times.includes(time) }}
                 onPress={() => toggleTime(time)}
                 style={({ pressed }) => [styles.chip, times.includes(time) && styles.chipActive, pressed && styles.pressed]}
               >
@@ -349,37 +320,115 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
               </Pressable>
             ))}
           </View>
-          <View style={styles.customTime}>
-            <TextInput
-              value={customTime}
-              onChangeText={setCustomTime}
-              placeholder="Custom time, e.g. 17:30"
-              placeholderTextColor={colors.muted}
-              keyboardType="numbers-and-punctuation"
-              style={styles.customInput}
-              maxLength={5}
-              testID="medicine-custom-time"
-            />
-            <Pressable onPress={addCustomTime} style={({ pressed }) => [styles.addTime, pressed && styles.pressed]} testID="medicine-custom-add">
-              <Text style={styles.addTimeText}>Add</Text>
-            </Pressable>
-          </View>
-          {times.length > 0 ? <Text style={styles.selectedTimes}>Selected: {times.join(" · ")}</Text> : null}
+          <MedicineTimePicker onSelect={addCustomTime} disabled={saving || voiceNote.busy} />
+          {times.length > 0 ? (
+            <View style={styles.field}>
+              <Text style={styles.selectedTimes}>Selected times</Text>
+              <View style={styles.chips}>
+                {times.map((time) => (
+                  <Pressable
+                    key={time}
+                    testID={`medicine-selected-time-${time}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove reminder time ${time}`}
+                    hitSlop={4}
+                    disabled={saving || voiceNote.busy}
+                    onPress={() => setTimes((current) => current.filter((value) => value !== time))}
+                    style={({ pressed }) => [styles.chip, styles.chipActive, styles.selectedTimeChip, pressed && styles.pressed]}
+                  >
+                    <Text style={[styles.chipText, styles.chipTextActive, styles.selectedTimeText]}>{time}</Text>
+                    <Ionicons name="close" size={14} color={colors.brandPrimary} />
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
         </View>
 
         <Field label="How many do you have?" value={quantity} onChangeText={setQuantity} placeholder="Optional" keyboardType="number-pad" />
-        <Field label="Identification cue" value={identification} onChangeText={setIdentification} placeholder="e.g. Small round white tablet" multiline />
+        <View style={photoStyles.field} testID="medicine-identification-section">
+          <Field label="Identification cue" value={identification} onChangeText={setIdentification} placeholder="e.g. Small round white tablet" multiline testID="medicine-identification-input" />
+          {selectedImage || imageUrl ? (
+            <Image
+              testID="medicine-photo-preview"
+              accessibilityLabel={`${name || "Medicine"} photo preview`}
+              source={{
+                uri: selectedImage
+                  ? `data:${selectedImage.contentType};base64,${selectedImage.base64}`
+                  : resolveMediaUrl(imageUrl),
+                headers: selectedImage ? undefined : authHeaders(),
+              }}
+              contentFit="cover"
+              style={photoStyles.imagePreview}
+            />
+          ) : null}
+          <View style={photoStyles.imageButtons}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Choose medicine photo"
+              testID="medicine-photo-choose"
+              disabled={saving || voiceNote.busy}
+              onPress={() => void chooseImage()}
+              style={({ pressed }) => [photoStyles.imageButton, pressed && photoStyles.pressed]}
+            >
+              <Text style={photoStyles.imageButtonText}>
+                {selectedImage || imageUrl ? "Change photo" : "Choose photo"}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Take medicine photo with camera"
+              testID="medicine-photo-camera"
+              disabled={saving || voiceNote.busy}
+              onPress={() => void chooseImage("camera")}
+              style={({ pressed }) => [photoStyles.imageButton, pressed && photoStyles.pressed]}
+            >
+              <Text style={photoStyles.imageButtonText}>Take photo</Text>
+            </Pressable>
+            {selectedImage || imageUrl ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Remove medicine photo"
+                testID="medicine-photo-remove"
+                disabled={saving || voiceNote.busy}
+                onPress={() => {
+                  setImageUrl("");
+                  setSelectedImage(null);
+                }}
+                style={({ pressed }) => [photoStyles.imageRemoveButton, pressed && photoStyles.pressed]}
+              >
+                <Text style={photoStyles.imageRemoveText}>Remove</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          <Text style={photoStyles.helper}>JPEG, PNG, or WebP, up to 5 MB.</Text>
+        </View>
         <Field label="Extra instructions" value={instructions} onChangeText={setInstructions} placeholder="e.g. After breakfast" multiline />
 
+        <VoiceNoteField value={voiceNote} disabled={saving} />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton
           testID="save-medicine-button"
           label={saving ? "Saving…" : existing ? "Save changes" : "Save medicine"}
-          onPress={save}
-          disabled={saving}
+          onPress={() => save()}
+          disabled={saving || voiceNote.busy}
         />
+        {!existing ? (
+          <Pressable
+            testID="add-another-medicine-button"
+            accessibilityRole="button"
+            accessibilityLabel="Add another medicine"
+            accessibilityHint="Saves this medicine and starts a new blank medicine form."
+            disabled={saving || voiceNote.busy}
+            onPress={() => save(true)}
+            style={({ pressed }) => [styles.addAnother, pressed && styles.pressed]}
+          >
+            <Ionicons name="add" size={20} color={colors.brandPrimary} />
+            <Text style={styles.addAnotherText}>Add another medicine</Text>
+          </Pressable>
+        ) : null}
         {existing ? (
-          <Pressable onPress={archive} disabled={saving} style={({ pressed }) => [styles.archive, pressed && styles.pressed]} testID="archive-medicine-button">
+          <Pressable onPress={archive} disabled={saving || voiceNote.busy} style={({ pressed }) => [styles.archive, pressed && styles.pressed]} testID="archive-medicine-button">
             <Text style={styles.archiveText}>Archive medicine</Text>
           </Pressable>
         ) : null}
@@ -484,28 +533,11 @@ const useStyles = makeStyles((colors) =>
     chipText: { color: colors.onSurfaceSecondary, fontSize: 13, fontWeight: "700" },
     chipTextActive: { color: colors.brandPrimary },
     chipDot: { width: 8, height: 8, borderRadius: 4 },
-    customTime: { flexDirection: "row", gap: 8, marginTop: 4 },
-    customInput: {
-      flex: 1,
-      minHeight: 46,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surfaceSecondary,
-      paddingHorizontal: 14,
-      color: colors.onSurface,
-      fontSize: 14,
-    },
-    addTime: {
-      minWidth: 62,
-      minHeight: 46,
-      borderRadius: 12,
-      backgroundColor: colors.brandTertiary,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    addTimeText: { color: colors.brandPrimary, fontWeight: "800", fontSize: 14 },
     selectedTimes: { color: colors.brandPrimary, fontSize: 12, fontWeight: "700", marginTop: 4 },
+    selectedTimeChip: { minHeight: 36, paddingHorizontal: 10, gap: 5 },
+    selectedTimeText: { fontSize: 12 },
+    addAnother: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1.5, borderStyle: "dashed", borderColor: colors.brandPrimary, borderRadius: 16, backgroundColor: colors.brandTertiary },
+    addAnotherText: { color: colors.brandPrimary, fontSize: 15, fontWeight: "800" },
     error: { color: colors.error, fontSize: 13 },
     archive: { minHeight: 44, alignItems: "center", justifyContent: "center" },
     archiveText: { color: colors.error, fontSize: 14, fontWeight: "700" },

@@ -163,6 +163,11 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   currentAccount: () => request<Account>("/auth/me"),
+  familyJoinCode: (id: string) => request<{ family_group_id: string; code: string }>(
+    `/family-groups/${encodeURIComponent(id)}/join-code`),
+  acceptFamilyCode: (code: string) => request<{ ok: boolean; family_group_id: string }>("/family-code/accept", {
+    method: "POST", body: JSON.stringify({ code }),
+  }),
   createFamilyInvitation: (familyGroupId: string, email: string) =>
     request<{ email: string; family_group_id: string; token: string; expires_at: string }>(
       `/family-groups/${encodeURIComponent(familyGroupId)}/invites`,
@@ -179,6 +184,9 @@ export const api = {
       { method: "DELETE" },
     ),
   familyGroups: () => request<FamilyGroup[]>("/family-groups"),
+  deletedFamilyGroups: () => request<{ id: string; name: string; recover_until: string }[]>("/family-groups/deleted"),
+  deleteFamilyGroup: (id: string) => request<{ ok: boolean; recover_until: string }>(`/family-groups/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  restoreFamilyGroup: (id: string) => request<{ ok: boolean }>(`/family-groups/${encodeURIComponent(id)}/restore`, { method: "POST" }),
   createFamilyGroup: (name: string) =>
     request<FamilyGroup>("/family-groups", { method: "POST", body: JSON.stringify({ name }) }),
   renameFamilyGroup: (id: string, name: string) =>
@@ -195,6 +203,8 @@ export const api = {
     request<Member>(`/members/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   removeMember: (id: string) =>
     request<{ ok: boolean }>(`/members/${id}`, { method: "DELETE" }),
+  removeFamilyProfile: (groupId: string, id: string) =>
+    request<{ ok: boolean }>(`/family-groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
   medicines: (memberId?: string | null, activeOnly = true, familyGroupId?: string | null) =>
     request<Medicine[]>(
@@ -208,6 +218,11 @@ export const api = {
     request<Medicine>("/medicines", { method: "POST", body: JSON.stringify(input) }),
   updateMedicine: (id: string, input: Partial<MedicineInput> & { active?: boolean }) =>
     request<Medicine>(`/medicines/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  uploadVoiceNote: (contentType: string, audioBase64: string) =>
+    request<{ voice_note_url: string }>("/voice-notes", {
+      method: "POST",
+      body: JSON.stringify({ content_type: contentType, audio_base64: audioBase64 }),
+    }),
   uploadMedicineImage: (contentType: string, imageBase64: string) =>
     request<{ image_url: string }>("/medicine-images", {
       method: "POST",

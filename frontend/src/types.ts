@@ -27,6 +27,7 @@ export type Member = {
 };
 
 export type Medicine = {
+  voice_note_url?: string;
   id: string;
   name: string;
   dosage: string;
@@ -101,6 +102,7 @@ export type MissedDoseEvent = {
 };
 
 export type MedicineInput = {
+  voice_note_url?: string;
   name: string;
   dosage: string;
   frequency: string;
@@ -115,6 +117,7 @@ export type MedicineInput = {
 };
 
 export type Checkup = {
+  voice_note_url?: string;
   id: string;
   title: string;
   doctor: string;
@@ -127,6 +130,7 @@ export type Checkup = {
 };
 
 export type CheckupInput = {
+  voice_note_url?: string;
   title: string;
   doctor?: string;
   location?: string;
@@ -186,6 +190,7 @@ export type EyeDropStepInput = {
 };
 
 export type EyeDropProtocol = {
+  voice_note_url?: string;
   id: string;
   name: string;
   start_time: string;
@@ -199,6 +204,7 @@ export type EyeDropProtocol = {
 };
 
 export type EyeDropProtocolInput = {
+  voice_note_url?: string;
   name: string;
   start_time: string;
   interval_minutes: number;

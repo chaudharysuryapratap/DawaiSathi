@@ -38,6 +38,8 @@ type DataContextValue = {
   createFamilyGroup: (name: string) => Promise<FamilyGroup>;
   renameFamilyGroup: (id: string, name: string) => Promise<void>;
   leaveFamilyGroup: (id: string) => Promise<void>;
+  deleteFamilyGroup: (id: string) => Promise<void>;
+  restoreFamilyGroup: (id: string) => Promise<void>;
   members: Member[];
   activeMember: Member | null;
   activeMemberId: string | null;
@@ -160,6 +162,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
+    ++loadGeneration.current;
     setError(null);
     setLoading(true);
     try {
@@ -180,8 +183,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (groupId) {
         await loadGroupData(groupId);
       } else {
+        ++loadGeneration.current;
         setMembers([]);
         setActiveMemberIdState(null);
+        void storage.setItem(ACTIVE_MEMBER_KEY, null);
         setMedicines([]);
         setArchivedMedicines([]);
         setProtocols([]);
@@ -289,6 +294,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         await api.leaveFamilyGroup(id);
         await refresh();
       },
+      deleteFamilyGroup: async (id) => {
+        await runAndRefresh(() => api.deleteFamilyGroup(id));
+      },
+      restoreFamilyGroup: async (id) => {
+        await runAndRefresh(() => api.restoreFamilyGroup(id));
+      },
       members,
       activeMember,
       activeMemberId,
@@ -314,7 +325,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         await runAndRefresh(() => api.updateMember(id, patch));
       },
       removeMember: async (id) => {
-        await runAndRefresh(() => api.removeMember(id));
+        if (!activeFamilyGroupId) throw new Error("Select a family first.");
+        await runAndRefresh(() => api.removeFamilyProfile(activeFamilyGroupId, id));
       },
       addMedicine: (input) =>
         runAndRefresh(() =>

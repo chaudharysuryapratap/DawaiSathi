@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -13,11 +13,13 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { PrimaryButton } from "@/src/components/dawai-ui";
+import { ErrorState, LoadingState, PrimaryButton } from "@/src/components/dawai-ui";
+import { MedicineTimePicker } from "@/src/components/medicine-time-picker";
+import { VoiceNoteField, useVoiceNote } from "@/src/components/voice-note-field";
 import { useData } from "@/src/data-context";
 import { EYE_LABEL } from "@/src/protocol-status";
 import { makeStyles, useTheme } from "@/src/theme";
-import type { EyeTarget } from "@/src/types";
+import type { EyeDropProtocol, EyeTarget } from "@/src/types";
 
 const EYES: EyeTarget[] = ["left", "right", "both"];
 const INTERVAL_PRESETS = [3, 5, 10, 15];
@@ -28,21 +30,34 @@ type StepDraft = { medicine_name: string; dose: string; eye: EyeTarget };
 const emptyStep = (): StepDraft => ({ medicine_name: "", dose: "1 drop", eye: "both" });
 
 export default function AddEyeDropProtocolScreen() {
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { protocols, loading, error, refresh } = useData();
+  const router = useRouter();
+  const existing = protocols.find(protocol => protocol.id === id);
+  if (id && !existing) {
+    if (loading) return <LoadingState label="Loading protocol" />;
+    if (error) return <ErrorState message={error} onRetry={refresh} />;
+    return <ErrorState message="Protocol not found. It may have been removed." onRetry={() => router.back()} />;
+  }
+  return <EyeDropProtocolForm key={id ?? "create"} existing={existing} />;
+}
+
+function EyeDropProtocolForm({ existing }: { existing?: EyeDropProtocol }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const styles = useStyles();
-  const { members, activeMemberId, addProtocol } = useData();
+  const { members, activeMemberId, addProtocol, updateProtocol } = useData();
 
-  const [name, setName] = useState("Post-surgery eye drops");
-  const [startTime, setStartTime] = useState("08:00");
-  const [customStart, setCustomStart] = useState("");
-  const [interval, setInterval] = useState(5);
-  const [memberId, setMemberId] = useState<string | null>(activeMemberId);
-  const [steps, setSteps] = useState<StepDraft[]>([
+  const [name, setName] = useState(existing?.name ?? "Post-surgery eye drops");
+  const [startTime, setStartTime] = useState(existing?.start_time ?? "08:00");
+  const [interval, setInterval] = useState(existing?.interval_minutes ?? 5);
+  const [memberId, setMemberId] = useState<string | null>(existing ? existing.member_id : activeMemberId);
+  const [steps, setSteps] = useState<StepDraft[]>(existing?.steps.map(step => ({ medicine_name: step.medicine_name, dose: step.dose, eye: step.eye })) ?? [
     { medicine_name: "", dose: "1 drop", eye: "both" },
     { medicine_name: "", dose: "1 drop", eye: "both" },
   ]);
+  const voiceNote = useVoiceNote(existing?.voice_note_url);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,13 +88,6 @@ export default function AddEyeDropProtocolScreen() {
     });
   };
 
-  const setStartFromInput = () => {
-    if (/^([01]\d|2[0-3]):[0-5]\d$/.test(customStart)) {
-      setStartTime(customStart);
-      setCustomStart("");
-    }
-  };
-
   const save = async () => {
     const cleanedSteps = steps.map((step) => ({
       medicine_name: step.medicine_name.trim(),
@@ -98,16 +106,20 @@ export default function AddEyeDropProtocolScreen() {
       setError("Choose a valid start time (HH:MM).");
       return;
     }
+    if (voiceNote.busy) return;
     setSaving(true);
     setError(null);
     try {
-      await addProtocol({
+      const input = {
         name: name.trim(),
+        voice_note_url: await voiceNote.save(),
         start_time: startTime,
         interval_minutes: interval,
         steps: cleanedSteps,
         member_id: memberId,
-      });
+      };
+      if (existing) await updateProtocol(existing.id, input);
+      else await addProtocol(input);
       router.back();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Couldn’t save this protocol.");
@@ -127,7 +139,7 @@ export default function AddEyeDropProtocolScreen() {
         >
           <Ionicons name="close" size={22} color={colors.onSurface} />
         </Pressable>
-        <Text style={styles.headerTitle}>Staggered eye drops</Text>
+        <Text style={styles.headerTitle}>{existing ? "Modify protocol" : "Staggered eye drops"}</Text>
         <View style={styles.close} />
       </View>
       <ScrollView
@@ -204,25 +216,7 @@ export default function AddEyeDropProtocolScreen() {
               </Pressable>
             ))}
           </View>
-          <View style={styles.customTime}>
-            <TextInput
-              testID="protocol-start-custom"
-              value={customStart}
-              onChangeText={setCustomStart}
-              placeholder="Custom, e.g. 06:30"
-              placeholderTextColor={colors.muted}
-              keyboardType="numbers-and-punctuation"
-              maxLength={5}
-              style={styles.customInput}
-            />
-            <Pressable
-              testID="protocol-start-add"
-              onPress={setStartFromInput}
-              style={({ pressed }) => [styles.addTime, pressed && styles.pressed]}
-            >
-              <Text style={styles.addTimeText}>Set</Text>
-            </Pressable>
-          </View>
+          <MedicineTimePicker onSelect={setStartTime} disabled={saving} />
           <Text style={styles.helper}>Currently starts at {startTime}.</Text>
         </View>
 
@@ -355,12 +349,13 @@ export default function AddEyeDropProtocolScreen() {
           ))}
         </View>
 
+        <VoiceNoteField value={voiceNote} disabled={saving} />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton
           testID="save-protocol-button"
           label={saving ? "Saving…" : "Save protocol"}
           onPress={save}
-          disabled={saving}
+          disabled={saving || voiceNote.busy}
         />
       </ScrollView>
     </KeyboardAvoidingView>

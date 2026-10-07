@@ -12,16 +12,16 @@ import { useAuth } from "@/src/auth-context";
 import { useTheme } from "@/src/theme";
 import { getErrorMessage } from "@/src/utils/error-message";
 
-export function AuthScreen() {
+export function AuthScreen({ initialInvitationCode = "" }: { initialInvitationCode?: string } = {}) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const [screen, setScreen] = useState<"welcome" | "google" | "email">("welcome");
+  const [screen, setScreen] = useState<"welcome" | "google" | "email">(initialInvitationCode ? "email" : "welcome");
   const { error: authError, login, register } = useAuth();
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register">(initialInvitationCode ? "register" : "login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [token, setToken] = useState("");
+  const [token, setToken] = useState(initialInvitationCode);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isRegister = mode === "register";
@@ -154,13 +154,13 @@ export function AuthScreen() {
         </View>
         {isRegister ? (
           <View style={styles.field}>
-            <Text style={styles.label}>Invitation or setup code</Text>
+            <Text style={styles.label}>Family code, invitation or setup code</Text>
             <TextInput
               testID="auth-invitation-token"
               value={token}
               onChangeText={setToken}
               autoCapitalize="none"
-              placeholder="Enter your invitation or first-account setup code"
+              placeholder="Enter family code, invitation or setup code"
               placeholderTextColor={colors.muted}
               style={styles.input}
             />

@@ -31,7 +31,7 @@ export function computeDoseStatus(
 }
 
 export const STATUS_LABEL: Record<DoseStatus, string> = {
-  locked: "Locked",
+  locked: "Upcoming",
   ready: "Ready",
   late: "Late",
   missed: "Missed",

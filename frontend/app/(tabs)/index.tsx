@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 import { AppHeader } from "@/src/components/app-header";
 import { authHeaders, resolveMediaUrl } from "@/src/api";
@@ -30,6 +30,8 @@ export default function TodayScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const styles = useStyles();
+  const { width, fontScale } = useWindowDimensions();
+  const stackDoseActions = width < 360 || fontScale > 1.2;
   const {
     todayDoses,
     todayProtocols,
@@ -41,6 +43,7 @@ export default function TodayScreen() {
     error,
     refresh,
     logDose,
+    undoDose,
   } = useData();
   const [selectedDose, setSelectedDose] = useState<TodayDose | null>(null);
   const [selectedProtocol, setSelectedProtocol] = useState<TodayProtocol | null>(null);
@@ -49,15 +52,20 @@ export default function TodayScreen() {
   const [doseActionError, setDoseActionError] = useState<string | null>(null);
   const doseActionsInFlight = useRef(new Set<string>());
 
-  const markDoseAsTaken = async (dose: TodayDose) => {
-    if (dose.logged_at || doseActionsInFlight.current.has(dose.dose_id)) return;
+  const toggleDoseTaken = async (dose: TodayDose) => {
+    if (doseActionsInFlight.current.has(dose.dose_id)) return;
+    const undo = Boolean(dose.logged_at);
     doseActionsInFlight.current.add(dose.dose_id);
     setBusyDoseIds((current) => new Set(current).add(dose.dose_id));
     setDoseActionMessage(null);
     setDoseActionError(null);
     try {
-      await logDose(dose.medicine_id, dose.time);
-      setDoseActionMessage(`${dose.medicine_name} marked as taken.`);
+      if (undo) {
+        await undoDose(dose.medicine_id, dose.time);
+      } else {
+        await logDose(dose.medicine_id, dose.time);
+      }
+      setDoseActionMessage(undo ? `${dose.medicine_name} taken record undone.` : `${dose.medicine_name} marked as taken.`);
     } catch (requestError) {
       setDoseActionError(
         requestError instanceof Error ? requestError.message : "The dose could not be saved.",
@@ -192,14 +200,15 @@ export default function TodayScreen() {
                       }
                       const dose = item.dose;
                       const status = computeDoseStatus(dose.time, dose.logged_at);
+                      const isTaken = Boolean(dose.logged_at);
                       const eligibleForQuickAction =
-                        !dose.logged_at && (status === "ready" || status === "late" || status === "missed");
+                        isTaken || status === "ready" || status === "late" || status === "missed";
                       const isBusy = busyDoseIds.has(dose.dose_id);
                       return (
                         <View
                           key={dose.dose_id}
                           testID={`dose-row-${dose.dose_id}`}
-                          style={styles.doseRow}
+                          style={[styles.doseRow, stackDoseActions && styles.doseRowStacked]}
                         >
                           <Pressable
                             accessibilityRole="button"
@@ -224,14 +233,14 @@ export default function TodayScreen() {
                                 <Ionicons name="medical" size={19} color={colors.brandPrimary} />
                               </View>
                             )}
-                            <View style={{ flex: 1, gap: 3 }}>
+                            <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
                               <Text style={styles.doseName}>{dose.medicine_name}</Text>
                               <Text style={styles.doseDetail}>
                                 {[dose.instructions, dose.dosage].filter(Boolean).join(" · ") || "As directed"}
                               </Text>
-                              <View style={styles.doseFooter}>
+                              <View style={[styles.doseFooter, status === "locked" && styles.upcomingFooter]}>
                                 <Text style={styles.doseTime}>{formatTime(dose.time)}</Text>
-                                <StatusPill status={status} testID={`dose-status-${dose.dose_id}`} />
+                                <StatusPill compact status={status} testID={`dose-status-${dose.dose_id}`} />
                               </View>
                             </View>
                           </Pressable>
@@ -239,18 +248,19 @@ export default function TodayScreen() {
                             {eligibleForQuickAction ? (
                               <Pressable
                                 accessibilityRole="button"
-                                accessibilityLabel={`Mark ${dose.medicine_name} dose at ${formatTime(dose.time)} as taken`}
-                                testID={`dose-mark-taken-${dose.dose_id}`}
+                                accessibilityLabel={isTaken ? `Undo taken for ${dose.medicine_name} dose at ${formatTime(dose.time)}` : `Mark ${dose.medicine_name} dose at ${formatTime(dose.time)} as taken`}
+                                testID={`${isTaken ? "dose-undo-taken" : "dose-mark-taken"}-${dose.dose_id}`}
                                 disabled={isBusy}
-                                onPress={() => void markDoseAsTaken(dose)}
+                                onPress={() => void toggleDoseTaken(dose)}
                                 style={({ pressed }) => [
                                   styles.quickAction,
+                                  isTaken && styles.quickActionUndo,
                                   isBusy && styles.quickActionDisabled,
                                   pressed && !isBusy && styles.pressed,
                                 ]}
                               >
-                                <Text style={styles.quickActionText}>
-                                  {isBusy ? "Saving…" : "Mark as taken"}
+                                <Text style={[styles.quickActionText, isTaken && styles.quickActionUndoText]}>
+                                  {isBusy ? "Saving…" : isTaken ? "Undo taken" : "Mark as taken"}
                                 </Text>
                               </Pressable>
                             ) : null}
@@ -347,18 +357,23 @@ const useStyles = makeStyles((colors) =>
     slotList: { gap: 8 },
     doseRow: {
       minHeight: 84,
-      gap: 8,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
       padding: 12,
       borderRadius: 18,
       backgroundColor: colors.surfaceSecondary,
       borderWidth: 1,
       borderColor: colors.border,
     },
+    doseRowStacked: { flexDirection: "column", alignItems: "stretch" },
     doseMain: {
+      flex: 1,
+      minWidth: 0,
       minHeight: 58,
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
+      gap: 10,
       borderRadius: 12,
     },
     doseIcon: {
@@ -369,18 +384,19 @@ const useStyles = makeStyles((colors) =>
       alignItems: "center",
       justifyContent: "center",
     },
-    doseImage: { width: 48, height: 48, borderRadius: 14, backgroundColor: colors.surfaceTertiary },
+    doseImage: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.surfaceTertiary },
     doseName: { color: colors.onSurface, fontSize: 15, fontWeight: "800" },
     doseDetail: { color: colors.muted, fontSize: 12 },
-    doseFooter: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 3 },
+    doseFooter: { flexDirection: "column", alignItems: "flex-start", gap: 6, marginTop: 3 },
+    upcomingFooter: { flexDirection: "row", flexWrap: "wrap", alignItems: "center" },
     doseTime: { color: colors.onSurfaceSecondary, fontSize: 12, fontWeight: "700" },
-    doseActions: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 8 },
+    doseActions: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", flexShrink: 0, gap: 4 },
     quickAction: {
-      minWidth: 96,
+      width: 108,
       minHeight: 48,
       borderRadius: 14,
       backgroundColor: colors.brandPrimary,
-      paddingHorizontal: 12,
+      paddingHorizontal: 8,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -391,6 +407,8 @@ const useStyles = makeStyles((colors) =>
       textAlign: "center",
     },
     quickActionDisabled: { opacity: 0.6 },
+    quickActionUndo: { backgroundColor: colors.brandTertiary },
+    quickActionUndoText: { color: colors.brandPrimary },
     chevronButton: {
       width: 44,
       height: 44,

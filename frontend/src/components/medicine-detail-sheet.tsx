@@ -24,11 +24,14 @@ type Props = {
   dose: TodayDose | null;
 };
 
-export function MedicineDetailSheet({ visible, onClose, dose }: Props) {
+export function MedicineDetailSheet({ visible, onClose, dose: selectedDose }: Props) {
   const router = useRouter();
   const styles = useStyles();
   const { colors } = useTheme();
-  const { medicines, history, members, logDose, undoDose, archiveMedicine } = useData();
+  const { todayDoses, medicines, history, members, logDose, undoDose, archiveMedicine } = useData();
+  const dose = selectedDose
+    ? todayDoses.find((item) => item.dose_id === selectedDose.dose_id) ?? selectedDose
+    : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -92,8 +95,8 @@ export function MedicineDetailSheet({ visible, onClose, dose }: Props) {
     <>
       {status === "locked" ? (
         <View style={styles.lockedNote}>
-          <Ionicons name="lock-closed-outline" size={16} color={colors.info} />
-          <Text style={styles.lockedText}>Locked · Available at {formatTime(dose.time)}</Text>
+          <Ionicons name="time-outline" size={16} color={colors.info} />
+          <Text style={styles.lockedText}>Upcoming · Available at {formatTime(dose.time)}</Text>
         </View>
       ) : null}
       {(canMark || isTaken) ? (

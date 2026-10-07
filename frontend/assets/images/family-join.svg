@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 112">
+<defs><linearGradient id="plane" x2="1" y2="1"><stop stop-color="#9ACFC0"/><stop offset="1" stop-color="#609F91"/></linearGradient></defs>
+<path d="M0 45Q18 32 43 53T98 54T153 50T200 36V112H0Z" fill="#DCEEE6"/>
+<path d="M0 62Q16 49 35 65T83 67T132 63T174 58T200 55V112H0Z" fill="#CDE5DB"/>
+<path d="M0 83Q25 69 55 83T113 82T166 78T200 79V112H0Z" fill="#BEDCCE"/>
+<path d="M59 33Q52 66 96 49T158 65" fill="none" stroke="#91C3B3" stroke-width="1.5" stroke-dasharray="4 4"/>
+<path d="M38 18L85 6L62 34L54 25Z" fill="url(#plane)"/>
+<path d="M54 25L85 6L60 30L62 34Z" fill="#4E9284"/>
+<path d="M60 30L85 6L69 36Z" fill="#ADD8C9"/>
+<g stroke="#86BBAA" stroke-width="2" stroke-linecap="round"><path d="M102 31v7m-3.5-3.5h7M158 14v9m-4.5-4.5h9"/></g>
+</svg>

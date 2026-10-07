@@ -5,6 +5,8 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ErrorState, LoadingState, PrimaryButton } from "@/src/components/dawai-ui";
+import { MedicineTimePicker } from "@/src/components/medicine-time-picker";
+import { VoiceNoteField, useVoiceNote } from "@/src/components/voice-note-field";
 import { useData } from "@/src/data-context";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -69,6 +71,7 @@ function AddCheckupForm({ mode }: { mode: CheckupFormMode }) {
     return next;
   });
   const [memberId, setMemberId] = useState<string | null>(existing ? existing.member_id : activeMemberId);
+  const voiceNote = useVoiceNote(existing?.voice_note_url ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,11 +80,13 @@ function AddCheckupForm({ mode }: { mode: CheckupFormMode }) {
       setError("Add a title so you know what this checkup is for.");
       return;
     }
+    if (voiceNote.busy) return;
     setSaving(true);
     setError(null);
     try {
       const payload = {
         title: title.trim(),
+        voice_note_url: await voiceNote.save(),
         doctor: doctor.trim(),
         location: location.trim(),
         notes: notes.trim(),
@@ -218,19 +223,23 @@ function AddCheckupForm({ mode }: { mode: CheckupFormMode }) {
           </View>
         </View>
 
+        <MedicineTimePicker onSelect={updateTime} disabled={saving} />
+        <Text style={styles.label}>Selected time: {`${String(dateValue.getHours()).padStart(2, "0")}:${String(dateValue.getMinutes()).padStart(2, "0")}`}</Text>
+
         <Field label="Doctor" value={doctor} onChangeText={setDoctor} placeholder="e.g. Dr. Sharma" testID="checkup-doctor" />
         <Field label="Location" value={location} onChangeText={setLocation} placeholder="e.g. Apollo Hospital" testID="checkup-location" />
         <Field label="Notes" value={notes} onChangeText={setNotes} placeholder="Optional details" multiline testID="checkup-notes" />
 
+        <VoiceNoteField value={voiceNote} disabled={saving} />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton
           testID="save-checkup-button"
           label={saving ? "Saving…" : existing ? "Save checkup" : "Add checkup"}
           onPress={save}
-          disabled={saving}
+          disabled={saving || voiceNote.busy}
         />
         {existing ? (
-          <Pressable onPress={remove} disabled={saving} style={({ pressed }) => [styles.delete, pressed && styles.pressed]} testID="delete-checkup-button">
+          <Pressable onPress={remove} disabled={saving || voiceNote.busy} style={({ pressed }) => [styles.delete, pressed && styles.pressed]} testID="delete-checkup-button">
             <Text style={styles.deleteText}>Delete checkup</Text>
           </Pressable>
         ) : null}

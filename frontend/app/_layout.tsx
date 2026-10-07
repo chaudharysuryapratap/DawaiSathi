@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Redirect, Stack, usePathname } from "expo-router";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -22,6 +22,11 @@ export default function RootLayout() {
 
 function AuthenticatedApp() {
   const { status } = useAuth();
+  const pathname = usePathname();
+  // The public QR route must not replace the signed-out home fallback.
+  if (pathname === "/" && (status === "signedOut" || status === "error")) {
+    return <Redirect href="/auth" />;
+  }
   const stack = (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Protected guard={status === "signedIn"}>
@@ -34,6 +39,7 @@ function AuthenticatedApp() {
       <Stack.Protected guard={status !== "signedIn"}>
         <Stack.Screen name="auth" />
       </Stack.Protected>
+      <Stack.Screen name="join-family" />
     </Stack>
   );
   if (status !== "signedIn") return stack;

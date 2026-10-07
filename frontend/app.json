@@ -36,6 +36,16 @@
       ],
       "expo-font",
       "expo-image",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow DawaiSathi to choose a medicine identification photo.",
+          "cameraPermission": "Allow DawaiSathi to take a medicine identification photo.",
+          "microphonePermission": "Allow DawaiSathi to record a voice note."
+        }
+      ],
+      ["expo-audio", { "microphonePermission": "Allow DawaiSathi to record a voice note.", "enableBackgroundRecording": false, "enableBackgroundPlayback": false }],
       "expo-secure-store",
       "expo-web-browser",
       "expo-status-bar"
