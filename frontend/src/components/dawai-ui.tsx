@@ -10,16 +10,18 @@ export function ScreenShell({
   testID,
   header,
   scroll = true,
+  backgroundColor,
 }: {
   children: React.ReactNode;
   testID?: string;
   header?: React.ReactNode;
   scroll?: boolean;
+  backgroundColor?: string;
 }) {
   const insets = useSafeAreaInsets();
   const styles = useStyles();
   return (
-    <View style={styles.root} testID={testID}>
+    <View style={[styles.root, backgroundColor ? { backgroundColor } : undefined]} testID={testID}>
       {header ? <View style={[styles.headerWrap, { paddingTop: insets.top + 8 }]}>{header}</View> : null}
       {scroll ? (
         <ScrollView

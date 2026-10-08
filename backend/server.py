@@ -319,6 +319,7 @@ class FamilyGroup(BaseModel):
 
 class FamilyGroupCreate(BaseModel):
     name: str = Field(min_length=1, max_length=60)
+    role: str = Field(default="member", pattern="^(member|care_taker)$")
 
 
 class FamilyGroupUpdate(BaseModel):
@@ -329,6 +330,9 @@ class Member(BaseModel):
     id: str
     name: str
     role: str = "member"
+    email: Optional[str] = None
+    relationship: str = ""
+    user_id: Optional[str] = None
     color: str
     is_primary: bool = False
     family_group_ids: List[str] = Field(default_factory=list)
@@ -498,14 +502,17 @@ def _issue_session(user: dict) -> AccountSession:
 
 
 async def _invitation_for_token(token: str, email: str) -> dict:
-    invitation = await db.family_invitations.find_one(
-        {"token_hash": sha256(token.encode("utf-8")).hexdigest(), "used_at": None},
+    collection = db.management_invites if token.startswith("FAM-") else db.family_invitations
+    invitation = await collection.find_one(
+        {"token_hash": sha256(token.encode("utf-8")).hexdigest(), "used_at": None, "cancelled_at": {"$exists": False}},
         {"_id": 0},
     )
-    if not invitation or invitation["email"] != email:
+    if not invitation or (invitation.get("email") and invitation["email"] != email):
         raise HTTPException(status_code=404, detail="Invitation not found for this email")
     if datetime.fromisoformat(invitation["expires_at"]) <= now_utc():
         raise HTTPException(status_code=410, detail="This invitation has expired")
+    if token.startswith("FAM-"):
+        invitation["management_invite"] = True
     return invitation
 
 
@@ -866,7 +873,7 @@ async def record_missed_doses(
                 continue
             hour, minute = (int(value) for value in time_value.split(":"))
             scheduled = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            if current - scheduled < threshold or _created_after_scheduled(medicine, scheduled):
+            if current <= scheduled or _created_after_scheduled(medicine, scheduled):
                 continue
             event_key = f"medicine:{medicine['id']}:{time_value}:{date_value}"
             document = {
@@ -1136,8 +1143,13 @@ async def _register_account(input: AccountRegistration, google_subject: Optional
             await db.users.delete_one({"id": user_id})
             raise HTTPException(status_code=404, detail="The family no longer exists")
     else:
-        claimed = await db.family_invitations.update_one(
-            {"id": invitation["id"], "used_at": None},
+        if invitation.get("management_invite"):
+            # Registration creates an account only. The signed-in user must
+            # review the family and explicitly confirm joining afterwards.
+            return _issue_session(user)
+        invitation_collection = db.family_invitations
+        claimed = await invitation_collection.update_one(
+            {"id": invitation["id"], "used_at": None, "cancelled_at": {"$exists": False}, "expires_at": {"$gt": now_iso()}},
             {"$set": {"used_at": now_iso(), "accepted_user_id": user_id}},
         )
         if claimed.modified_count != 1:
@@ -1148,7 +1160,7 @@ async def _register_account(input: AccountRegistration, google_subject: Optional
             {"$addToSet": {"user_ids": user_id}},
         )
         if joined.matched_count != 1:
-            await db.family_invitations.update_one(
+            await invitation_collection.update_one(
                 {"id": invitation["id"], "accepted_user_id": user_id},
                 {"$unset": {"used_at": "", "accepted_user_id": ""}},
             )
@@ -1244,9 +1256,14 @@ async def list_family_groups(request: Request):
 @api_router.post("/family-groups", response_model=FamilyGroup)
 async def create_family_group(input: FamilyGroupCreate, request: Request):
     await ensure_family_groups()
-    primary = await db.members.find_one({"is_primary": True}, {"_id": 0})
+    user = request.state.user
+    primary = await db.members.find_one({"user_id": user["id"]}, {"_id": 0})
     if not primary:
-        raise HTTPException(status_code=400, detail="Primary member not found")
+        owned_groups = await db.family_groups.find({"owner_user_id": user["id"], **ACTIVE_FAMILY}, {"id": 1}).to_list(200)
+        primary = await db.members.find_one({"is_primary": True, "family_group_ids": {"$in": [g["id"] for g in owned_groups]}, "user_id": {"$exists": False}}, {"_id": 0})
+    if not primary:
+        primary = {"id": str(uuid.uuid4()), "name": user["name"], "user_id": user["id"], "email": user["email"], "role": "member", "color": MEMBER_COLORS[0], "is_primary": True, "family_group_ids": [], "created_at": now_iso()}
+        await db.members.insert_one(primary.copy())
     name = input.name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="Family group name is required")
@@ -1257,6 +1274,7 @@ async def create_family_group(input: FamilyGroupCreate, request: Request):
         "member_ids": [primary["id"]],
         "owner_user_id": request.state.user["id"],
         "user_ids": [request.state.user["id"]],
+        "user_roles": {request.state.user["id"]: input.role},
         "created_at": now,
         "updated_at": now,
     }
@@ -1444,6 +1462,8 @@ async def create_family_invitation(
 async def accept_family_invitation(input: FamilyInvitationAccept, request: Request):
     user = request.state.user
     invitation = await _invitation_for_token(input.token, user["email"])
+    if invitation.get("management_invite"):
+        raise HTTPException(422, "Review and confirm this invitation in Family management")
     claimed = await db.family_invitations.update_one(
         {"id": invitation["id"], "used_at": None},
         {"$set": {"used_at": now_iso(), "accepted_user_id": user["id"]}},
@@ -2336,6 +2356,11 @@ async def get_medicine_image(filename: str, user: dict = Depends(require_authent
     return FileResponse(image_path)
 
 
+from prescriptions import prescription_router
+from family_management import management_router
+
+app.include_router(prescription_router(db, require_authenticated_user, ROOT_DIR / "data" / "prescriptions"))
+app.include_router(management_router(db, require_authenticated_user, limit_family_code_attempts))
 app.include_router(auth_router)
 app.include_router(api_router)
 app.add_middleware(

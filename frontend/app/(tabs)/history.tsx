@@ -1,15 +1,22 @@
+import { HistoryDateDial, localDayKey } from "@/src/components/history-date-dial";
 import { Ionicons } from "@expo/vector-icons";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { AppHeader } from "@/src/components/app-header";
+
 import { ErrorState, LoadingState, ScreenShell } from "@/src/components/dawai-ui";
 import { useData } from "@/src/data-context";
 import { formatIsoDate, formatTime } from "@/src/dose-status";
 import { makeStyles, useTheme } from "@/src/theme";
 import type { DoseLog, MissedDoseEvent, ProtocolStepLog } from "@/src/types";
 
-const STATUS_FILTERS = ["all", "taken", "missed"] as const;
+const STATUS_FILTERS = ["all", "taken", "taken-late", "missed"] as const;
+export function isHistoryTakenLate(entry: { local_date: string; time: string; logged_at: string }) {
+  return new Date(entry.logged_at).getTime() - new Date(`${entry.local_date}T${entry.time}:00`).getTime() > 30 * 60000;
+}
+function takenAt(value: string) {
+  return `Taken at ${new Date(value).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+}
 type StatusFilter = (typeof STATUS_FILTERS)[number];
 
 const RANGES = [
@@ -92,7 +99,6 @@ export default function HistoryScreen() {
     history,
     protocolHistory,
     missedDoseHistory,
-    todayDoses,
     medicines,
     protocols,
     members,
@@ -105,13 +111,14 @@ export default function HistoryScreen() {
   } = useData();
 
   const [medicineFilter, setMedicineFilter] = useState<string | "all">("all");
-  const [range, setRange] = useState<Range>("30");
+  const [range, setRange] = useState<Range>("7");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [showFilters, setShowFilters] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [selectedDate, setSelectedDate] = useState(() => localDayKey(new Date()));
 
   const cutoff = useMemo(() => {
-    if (range === "7") return HISTORY_REFERENCE_TIME - 7 * 24 * 60 * 60 * 1000;
-    if (range === "30") return HISTORY_REFERENCE_TIME - 30 * 24 * 60 * 60 * 1000;
+    if (range !== "all") { const day = new Date(HISTORY_REFERENCE_TIME); day.setHours(0, 0, 0, 0); day.setDate(day.getDate() - (range === "7" ? 6 : 29)); return day.getTime(); }
     return 0;
   }, [range]);
 
@@ -149,61 +156,50 @@ export default function HistoryScreen() {
     [missedDoseHistory, cutoff, medicineFilter],
   );
 
+  const dailyTaken = useMemo(() => {
+    const counts: Record<string, number> = {};
+    [...history, ...protocolHistory].forEach(log => { counts[log.local_date] = (counts[log.local_date] ?? 0) + 1; });
+    return counts;
+  }, [history, protocolHistory]);
+  const dailyMissed = useMemo(() => {
+    const counts: Record<string, number> = {};
+    missedDoseHistory.forEach(log => { counts[log.local_date] = (counts[log.local_date] ?? 0) + 1; });
+    return counts;
+  }, [missedDoseHistory]);
+
   const missedDoses = filteredMissedEvents.length;
-  const pendingToday = todayDoses.filter((dose) => !dose.logged_at).length;
+
   const takenDoses = filteredDoses.length + filteredProtocolLogs.length;
+  const lateDoses = [...filteredDoses, ...filteredProtocolLogs].filter(isHistoryTakenLate).length;
   const totalDoses = takenDoses + missedDoses;
   const adherence = totalDoses ? Math.round((takenDoses / totalDoses) * 100) : 0;
 
   const grouped = useMemo(() => {
     return groupDay(
-      statusFilter === "missed" ? [] : filteredDoses,
-      statusFilter === "missed" ? [] : filteredProtocolLogs,
-      statusFilter === "taken" ? [] : filteredMissedEvents,
+      statusFilter === "missed" ? [] : history.filter(entry => entry.local_date === selectedDate && medicineFilter !== "protocols" && (medicineFilter === "all" || entry.medicine_id === medicineFilter) && (statusFilter === "all" || (statusFilter === "taken-late" ? isHistoryTakenLate(entry) : !isHistoryTakenLate(entry)))),
+      statusFilter === "missed" || (medicineFilter !== "all" && medicineFilter !== "protocols") ? [] : protocolHistory.filter(entry => entry.local_date === selectedDate && (statusFilter === "all" || (statusFilter === "taken-late" ? isHistoryTakenLate(entry) : !isHistoryTakenLate(entry)))),
+      statusFilter === "taken" || statusFilter === "taken-late" ? [] : missedDoseHistory.filter(entry => entry.local_date === selectedDate && (medicineFilter === "all" || (medicineFilter === "protocols" ? entry.source_type === "protocol_step" : entry.medicine_id === medicineFilter))),
     );
-  }, [filteredDoses, filteredProtocolLogs, filteredMissedEvents, statusFilter]);
+  }, [history, protocolHistory, missedDoseHistory, selectedDate, medicineFilter, statusFilter]);
+  const selectedTaken = (medicineFilter === "protocols" ? 0 : history.filter(entry => entry.local_date === selectedDate && (medicineFilter === "all" || entry.medicine_id === medicineFilter)).length) + (medicineFilter === "all" || medicineFilter === "protocols" ? protocolHistory.filter(entry => entry.local_date === selectedDate).length : 0);
+  const selectedMissed = missedDoseHistory.filter(entry => entry.local_date === selectedDate && (medicineFilter === "all" || (medicineFilter === "protocols" ? entry.source_type === "protocol_step" : entry.medicine_id === medicineFilter))).length;
+  const selectedLate = history.filter(entry => entry.local_date === selectedDate && isHistoryTakenLate(entry) && medicineFilter !== "protocols" && (medicineFilter === "all" || entry.medicine_id === medicineFilter)).length + (medicineFilter === "all" || medicineFilter === "protocols" ? protocolHistory.filter(entry => entry.local_date === selectedDate && isHistoryTakenLate(entry)).length : 0);
 
-  const medicineName =
-    medicineFilter === "all"
-      ? "All items"
-      : medicineFilter === "protocols"
-        ? "Eye-drop protocols"
-        : medicines.find((medicine) => medicine.id === medicineFilter)?.name ?? "All items";
   const memberName = activeMember ? activeMember.name : "Everyone";
   const rangeLabel = RANGES.find((item) => item.id === range)?.label ?? "";
   const hasProtocols = protocols.length > 0 || protocolHistory.length > 0;
 
   return (
-    <ScreenShell testID="history-screen" header={<AppHeader />}>
+    <ScreenShell testID="history-screen">
       {loading ? (
         <LoadingState label="Loading your history" />
       ) : error ? (
         <ErrorState message={error} onRetry={refresh} />
       ) : (
         <>
-          <View style={styles.head}>
-            <Text style={styles.eyebrow}>HISTORY</Text>
-            <Text style={styles.title}>What happened?</Text>
-            <Text style={styles.subtitle}>
-              {memberName} · {medicineName} · {rangeLabel}
-            </Text>
-          </View>
-
-          <View style={styles.adherenceCard}>
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={styles.adherencePercent}>{adherence}% adherence</Text>
-              <Text style={styles.adherenceMeta}>
-                {takenDoses} taken · {missedDoses} missed · {pendingToday} pending today
-              </Text>
-            </View>
-            <View style={styles.adherenceRing}>
-              <Text style={styles.adherenceRingText}>{adherence}%</Text>
-            </View>
-          </View>
-
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow} testID="history-member-filter">
             <FilterPill
-              label="Everyone"
+              label={`All Family (${members.length})`}
               active={!activeMemberId}
               onPress={() => setActiveMember(null)}
               testID="history-filter-everyone"
@@ -220,6 +216,22 @@ export default function HistoryScreen() {
             ))}
           </ScrollView>
 
+          <View style={styles.adherenceCard} testID="history-adherence">
+            <View style={styles.summaryHeading}>
+              <View style={{ flex: 1, gap: 3 }}><Text style={styles.summaryTitle}>Medication Adherence</Text><Text style={styles.summarySubtitle}>Recorded consistency · {memberName} · {rangeLabel}</Text></View>
+              <View style={styles.percentBadge}><Text style={styles.percentText}>{totalDoses ? adherence + "%" : "—"}</Text></View>
+            </View>
+            <View style={styles.summaryStats}>
+              {[{ label: "Taken", value: takenDoses - lateDoses, color: colors.success }, { label: "Taken late", value: lateDoses, color: colors.warning }, { label: "Missed", value: missedDoses, color: colors.error }].map(item => <View key={item.label} style={styles.statTile}><Text style={[styles.statValue, { color: item.color }]}>{item.value}</Text><Text style={[styles.statLabel, { color: item.color }]}>{item.label}</Text></View>)}
+            </View>
+          </View>
+          <HistoryDateDial taken={dailyTaken} missed={dailyMissed} onSelectDate={setSelectedDate} />
+          <View style={{ gap: 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <Text style={styles.dayTitle}>{formatIsoDate(`${selectedDate}T12:00:00`)}</Text>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: showFilters }} testID="history-more-filters" onPress={() => setShowFilters(value => !value)} style={{ alignSelf: "flex-end", padding: 8 }}><Text style={styles.summarySubtitle}>{medicineFilter === "all" ? "All items" : medicineFilter === "protocols" ? "Eye-drop protocols" : medicines.find(item => item.id === medicineFilter)?.name} · {rangeLabel} · Filters {showFilters ? "⌃" : "⌄"}</Text></Pressable>
+          </View>
+          {showFilters ? <>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow} testID="history-medicine-filter">
             <FilterPill
               label="All items"
@@ -258,26 +270,25 @@ export default function HistoryScreen() {
             ))}
           </ScrollView>
 
+</> : null}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow} testID="history-status-filter">
             {STATUS_FILTERS.map((option) => (
               <FilterPill
                 key={option}
-                label={option === "all" ? "All events" : option === "taken" ? "Taken" : "Missed"}
+                label={option === "all" ? `All (${selectedTaken + selectedMissed})` : option === "taken" ? `Taken (${selectedTaken - selectedLate})` : option === "taken-late" ? `Taken late (${selectedLate})` : `Missed (${selectedMissed})`}
                 active={statusFilter === option}
                 onPress={() => setStatusFilter(option)}
                 testID={`history-filter-status-${option}`}
               />
             ))}
           </ScrollView>
-          <Text style={styles.captureNote}>
-            Misses are saved after a dose is 3 hours overdue while DawaiSathi is open. No earlier dates are backfilled.
-          </Text>
+          </View>
 
           {grouped.length === 0 ? (
             <View style={styles.empty}>
               <Ionicons name={statusFilter === "missed" ? "checkmark-circle-outline" : "time-outline"} size={30} color={colors.muted} />
               <Text style={styles.emptyTitle}>
-                {statusFilter === "missed" ? "No missed doses in this range" : "Nothing to show yet"}
+                {statusFilter === "missed" ? "No missed doses on this date" : "No records on this date"}
               </Text>
               <Text style={styles.emptyText}>
                 {statusFilter === "missed"
@@ -303,9 +314,9 @@ export default function HistoryScreen() {
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={styles.dayMedicine}>{label}</Text>
-                            <Text style={styles.dayMeta}>Missed · {entry.event.dosage}</Text>
+                            <Text style={styles.dayMeta}>{members.find(member => member.id === entry.event.member_id)?.name ?? "Shared"} · {formatTime(entry.event.time)} · {entry.event.local_date}</Text>
                           </View>
-                          <Text style={styles.dayTime}>{formatTime(entry.event.time)}</Text>
+                          <View style={styles.missedBadge}><Text style={styles.missedBadgeText}>MISSED</Text></View>
                         </View>
                       );
                     }
@@ -360,9 +371,9 @@ export default function HistoryScreen() {
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.dayMedicine}>{entry.log.medicine_name}</Text>
-                          <Text style={styles.dayMeta}>{entry.log.dosage}</Text>
+                          <Text style={styles.dayMeta}>{members.find(member => member.id === entry.log.member_id)?.name ?? "Shared"} · {statusFilter === "taken-late" ? takenAt(entry.log.logged_at) : formatTime(entry.log.time)} · {entry.log.local_date}</Text>
                         </View>
-                        <Text style={styles.dayTime}>{formatTime(entry.log.time)}</Text>
+                        <View style={[styles.takenBadge, isHistoryTakenLate(entry.log) && { backgroundColor: "#FFF1CC" }]}><Text style={[styles.takenBadgeText, isHistoryTakenLate(entry.log) && { color: colors.warning }]}>{isHistoryTakenLate(entry.log) ? "TAKEN LATE" : "TAKEN"}</Text></View>
                       </View>
                     );
                   })}
@@ -408,8 +419,8 @@ function FilterPill({
   );
 }
 
-const useStyles = makeStyles((colors) =>
-  StyleSheet.create({
+const useStyles = makeStyles((colors) => {
+  return StyleSheet.create({
     head: { gap: 4 },
     eyebrow: { color: colors.brandPrimary, fontSize: 12, fontWeight: "700", letterSpacing: 1.2 },
     title: { color: colors.onSurface, fontSize: 28, fontWeight: "800", letterSpacing: -0.5 },
@@ -418,9 +429,8 @@ const useStyles = makeStyles((colors) =>
       minHeight: 92,
       borderRadius: 22,
       backgroundColor: colors.brandTertiary,
-      padding: 18,
-      flexDirection: "row",
-      alignItems: "center",
+      padding: 16,
+      gap: 14,
     },
     adherencePercent: { color: colors.brandPrimary, fontSize: 24, fontWeight: "800" },
     adherenceMeta: { color: colors.onSurfaceSecondary, fontSize: 13 },
@@ -440,7 +450,9 @@ const useStyles = makeStyles((colors) =>
     filterPill: {
       minHeight: 36,
       paddingHorizontal: 14,
-      borderRadius: 999,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.borderStrong,
       backgroundColor: colors.surfaceTertiary,
       alignItems: "center",
       justifyContent: "center",
@@ -448,7 +460,7 @@ const useStyles = makeStyles((colors) =>
       gap: 8,
       flexShrink: 0,
     },
-    filterPillActive: { backgroundColor: colors.brandPrimary },
+    filterPillActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
     filterText: { color: colors.onSurfaceSecondary, fontSize: 13, fontWeight: "700" },
     filterTextActive: { color: colors.onBrandPrimary },
     filterAccent: { width: 10, height: 10, borderRadius: 5 },
@@ -460,7 +472,7 @@ const useStyles = makeStyles((colors) =>
     dayList: {
       backgroundColor: colors.surfaceSecondary,
       borderRadius: 18,
-      overflow: "hidden",
+      gap: 10,
     },
     dayRow: {
       minHeight: 68,
@@ -468,8 +480,7 @@ const useStyles = makeStyles((colors) =>
       alignItems: "center",
       gap: 12,
       paddingHorizontal: 14,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.divider,
+      borderWidth: 1, borderColor: colors.divider, borderRadius: 14, backgroundColor: colors.surfaceSecondary, paddingVertical: 12,
     },
     dayCheck: {
       width: 26,
@@ -516,6 +527,26 @@ const useStyles = makeStyles((colors) =>
     stepChildName: { color: colors.onSurface, fontSize: 13, fontWeight: "700" },
     stepChildMeta: { color: colors.muted, fontSize: 11, marginTop: 1 },
     stepChildTime: { color: colors.brandPrimary, fontSize: 12, fontWeight: "700" },
+    summaryHeading: { flexDirection: "row", alignItems: "center", gap: 10 },
+    summaryTitle: { color: colors.onBrandTertiary, fontSize: 17, fontWeight: "800" },
+    summarySubtitle: { color: colors.onSurfaceSecondary, fontSize: 11, lineHeight: 17 },
+    percentBadge: { paddingVertical: 9, paddingHorizontal: 13, borderRadius: 14, backgroundColor: colors.brandPrimary },
+    percentText: { color: colors.onBrandPrimary, fontSize: 22, fontWeight: "800" },
+    summaryStats: { flexDirection: "row", gap: 8 },
+    statTile: { flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 10, alignItems: "center", gap: 3 },
+    statValue: { fontSize: 17, fontWeight: "800" },
+    statLabel: { fontSize: 12 },
+    activityCard: { backgroundColor: colors.surfaceSecondary, borderRadius: 18, padding: 16, gap: 19 },
+    activityTitle: { color: colors.onSurfaceSecondary, fontSize: 13, fontWeight: "700" },
+    activityDays: { flexDirection: "row", justifyContent: "space-between" },
+    activityDay: { flex: 1, alignItems: "center", gap: 10 },
+    activityWeekday: { color: colors.muted, fontSize: 11 },
+    activityNumber: { color: colors.onSurface, fontSize: 14, fontWeight: "700" },
+    activityDot: { width: 7, height: 7, borderRadius: 4 },
+    takenBadge: { borderRadius: 6, backgroundColor: colors.brandTertiary, padding: 6 },
+    takenBadgeText: { color: colors.brandPrimary, fontSize: 10, fontWeight: "800" },
+    missedBadge: { borderRadius: 6, backgroundColor: colors.surfaceTertiary, padding: 6 },
+    missedBadgeText: { color: colors.error, fontSize: 10, fontWeight: "800" },
     pressed: { opacity: 0.8 },
-  }),
-);
+  });
+});

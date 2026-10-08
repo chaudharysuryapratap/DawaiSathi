@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { TextInput } from "@/src/components/focus-input";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { LoadingState, PrimaryButton } from "@/src/components/dawai-ui";

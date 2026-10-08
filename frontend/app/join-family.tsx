@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,6 +16,7 @@ export default function JoinFamilyRoute() {
   if (status === "loading") return <LoadingState label="Restoring session" />;
   if (status === "error") return <ErrorState title="Could not restore your session" message={error ?? "Try signing in again."} onRetry={retry} />;
   if (status !== "signedIn") return <AuthScreen initialInvitationCode={code ?? ""} />;
+  if (code?.startsWith("FAM-")) return <Redirect href={{ pathname: "/care/family-management", params: { inviteCode: code } }} />;
   return <SignedInJoin code={code ?? ""} />;
 }
 function SignedInJoin({ code }: { code: string }) {

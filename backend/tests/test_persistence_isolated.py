@@ -250,14 +250,15 @@ def test_missed_doses_are_persisted_once_and_suppressed_after_taken(isolated_dat
             group_id,
             at=datetime(2026, 6, 1, 9, 59, 59),
         )
-        assert before_threshold == []
+        assert len(before_threshold) == 1
+        assert before_threshold[0].source_type == "medicine"
         at_threshold = await server.record_missed_doses(
             group_id,
             at=datetime(2026, 6, 1, 10, 0),
         )
-        assert len(at_threshold) == 1
-        assert at_threshold[0].source_type == "protocol_step"
-        assert at_threshold[0].step_order == 1
+        assert len(at_threshold) == 2
+        protocol_event = next(event for event in at_threshold if event.source_type == "protocol_step")
+        assert protocol_event.step_order == 1
 
         events = await server.record_missed_doses(
             group_id,

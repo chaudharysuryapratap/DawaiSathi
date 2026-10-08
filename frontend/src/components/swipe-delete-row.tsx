@@ -25,14 +25,14 @@ export function SwipeDeleteRow({ children, open, disabled, label = "Delete", tes
     if (open && !disabled) swipe.current?.openRight();
     else swipe.current?.close();
   }, [open, disabled]);
-  return <GestureHandlerRootView style={{ flex: 0 }}>
+  return <GestureHandlerRootView unstable_forceActive style={{ flex: 0 }}>
     <Swipeable
       ref={swipe}
       testID={testID}
       enabled={!disabled}
       friction={2}
       rightThreshold={36}
-      dragOffsetFromRightEdge={18}
+      dragOffsetFromRightEdge={8}
       overshootRight={false}
       overshootLeft={false}
       onSwipeableWillOpen={onOpen}

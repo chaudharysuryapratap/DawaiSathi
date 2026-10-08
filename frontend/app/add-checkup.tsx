@@ -1,11 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { TextInput } from "@/src/components/focus-input";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ErrorState, LoadingState, PrimaryButton } from "@/src/components/dawai-ui";
 import { MedicineTimePicker } from "@/src/components/medicine-time-picker";
+import { CheckupDatePicker } from "@/src/components/checkup-date-picker";
 import { VoiceNoteField, useVoiceNote } from "@/src/components/voice-note-field";
 import { useData } from "@/src/data-context";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -19,11 +21,11 @@ type Checkup = ReturnType<typeof useData>["checkups"][number];
 
 export default function AddCheckupScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string }>();
+  const params = useLocalSearchParams<{ id?: string; copyId?: string }>();
   const { checkups, loading, error, refresh } = useData();
-  if (!params.id) return <AddCheckupForm mode={{ kind: "create" }} />;
+  if (!params.id && !params.copyId) return <AddCheckupForm mode={{ kind: "create" }} />;
 
-  const existing = checkups.find((checkup) => checkup.id === params.id);
+  const existing = checkups.find((checkup) => checkup.id === (params.id ?? params.copyId));
   if (loading && !existing) {
     return <LoadingState label="Loading checkup" />;
   }
@@ -32,7 +34,7 @@ export default function AddCheckupScreen() {
     return <EditRecordNotFound label="Checkup" onBack={() => router.back()} />;
   }
 
-  return <AddCheckupForm mode={{ kind: "edit", checkup: existing }} />;
+  return <AddCheckupForm key={`${params.id ?? params.copyId}`} mode={params.copyId ? { kind: "create", copy: existing } : { kind: "edit", checkup: existing }} />;
 }
 
 function EditRecordNotFound({ label, onBack }: { label: string; onBack: () => void }) {
@@ -50,28 +52,29 @@ function EditRecordNotFound({ label, onBack }: { label: string; onBack: () => vo
   );
 }
 
-type CheckupFormMode = { kind: "create" } | { kind: "edit"; checkup: Checkup };
+type CheckupFormMode = { kind: "create"; copy?: Checkup } | { kind: "edit"; checkup: Checkup };
 
 function AddCheckupForm({ mode }: { mode: CheckupFormMode }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const styles = useStyles();
-  const { members, activeMemberId, addCheckup, updateCheckup, removeCheckup } = useData();
+  const { members, activeMemberId, addCheckup, updateCheckup } = useData();
   const existing = mode.kind === "edit" ? mode.checkup : undefined;
+  const initial = existing ?? (mode.kind === "create" ? mode.copy : undefined);
 
-  const [title, setTitle] = useState(existing?.title ?? "");
-  const [doctor, setDoctor] = useState(existing?.doctor ?? "");
-  const [location, setLocation] = useState(existing?.location ?? "");
-  const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [doctor, setDoctor] = useState(initial?.doctor ?? "");
+  const [location, setLocation] = useState(initial?.location ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   const [dateValue, setDateValue] = useState(() => {
     if (existing) return new Date(existing.scheduled_at);
     const next = new Date();
     next.setHours(next.getHours() + 24, 0, 0, 0);
     return next;
   });
-  const [memberId, setMemberId] = useState<string | null>(existing ? existing.member_id : activeMemberId);
-  const voiceNote = useVoiceNote(existing?.voice_note_url ?? "");
+  const [memberId, setMemberId] = useState<string | null>(initial ? initial.member_id : activeMemberId);
+  const voiceNote = useVoiceNote(initial?.voice_note_url ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,37 +98,13 @@ function AddCheckupForm({ mode }: { mode: CheckupFormMode }) {
       };
       if (mode.kind === "edit") await updateCheckup(mode.checkup.id, payload);
       else await addCheckup(payload);
-      router.back();
+      router.replace({ pathname: "/care/checkups", params: { message: existing ? "Checkup updated" : "Checkup saved" } });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Couldn’t save this checkup.");
     } finally {
       setSaving(false);
     }
   };
-
-  const remove = async () => {
-    if (!existing) return;
-    setSaving(true);
-    try {
-      await removeCheckup(existing.id);
-      router.back();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Couldn’t delete.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const dayPicker = () => {
-    const options = Array.from({ length: 14 }, (_, index) => {
-      const next = new Date();
-      next.setDate(next.getDate() + index);
-      return next;
-    });
-    return options;
-  };
-
-  const timePresets = ["09:00", "11:30", "14:00", "17:00", "19:30"];
 
   const updateDay = (day: Date) => {
     const combined = new Date(dateValue);
@@ -156,10 +135,11 @@ function AddCheckupForm({ mode }: { mode: CheckupFormMode }) {
       </View>
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 40 + insets.bottom }]} keyboardShouldPersistTaps="handled">
         <Text style={styles.intro}>Log a doctor visit or lab test. Upcoming checkups appear on Today automatically.</Text>
-        <Field label="Title" value={title} onChangeText={setTitle} placeholder="e.g. Cardiology follow-up" testID="checkup-title" />
+        <Field label="What is this checkup for?" value={title} onChangeText={setTitle} placeholder="e.g. Eye checkup" testID="checkup-title" />
+        <Field label="Doctor’s name" value={doctor} onChangeText={setDoctor} placeholder="e.g. Dr. Sharma" testID="checkup-doctor" />
 
         <View style={styles.field}>
-          <Text style={styles.label}>Who is this for?</Text>
+          <Text style={styles.label}>Who is this checkup for?</Text>
           <View style={styles.chips}>
             {members.map((member) => (
               <Pressable
@@ -183,67 +163,29 @@ function AddCheckupForm({ mode }: { mode: CheckupFormMode }) {
         </View>
 
         <View style={styles.field}>
-          <Text style={styles.label}>Pick a day</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayRow}>
-            {dayPicker().map((day) => {
-              const active = day.toDateString() === dateValue.toDateString();
-              return (
-                <Pressable
-                  key={day.toISOString()}
-                  testID={`checkup-day-${day.getDate()}`}
-                  onPress={() => updateDay(day)}
-                  style={({ pressed }) => [styles.dayChip, active && styles.chipActive, pressed && styles.pressed]}
-                >
-                  <Text style={[styles.dayLabel, active && styles.chipTextActive]}>
-                    {day.toLocaleDateString(undefined, { weekday: "short" })}
-                  </Text>
-                  <Text style={[styles.dayNumber, active && styles.chipTextActive]}>{day.getDate()}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          <Text style={styles.label}>Date</Text>
+          <CheckupDatePicker value={dateValue} onSelect={updateDay} />
         </View>
 
         <View style={styles.field}>
-          <Text style={styles.label}>Pick a time</Text>
-          <View style={styles.chips}>
-            {timePresets.map((time) => {
-              const active = time === `${String(dateValue.getHours()).padStart(2, "0")}:${String(dateValue.getMinutes()).padStart(2, "0")}`;
-              return (
-                <Pressable
-                  key={time}
-                  testID={`checkup-time-${time}`}
-                  onPress={() => updateTime(time)}
-                  style={({ pressed }) => [styles.chip, active && styles.chipActive, pressed && styles.pressed]}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{time}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <Text style={styles.label}>Time</Text>
+          <MedicineTimePicker onSelect={updateTime} disabled={saving} initialTime={`${String(dateValue.getHours()).padStart(2, "0")}:${String(dateValue.getMinutes()).padStart(2, "0")}`} label={dateValue.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })} />
         </View>
 
-        <MedicineTimePicker onSelect={updateTime} disabled={saving} />
-        <Text style={styles.label}>Selected time: {`${String(dateValue.getHours()).padStart(2, "0")}:${String(dateValue.getMinutes()).padStart(2, "0")}`}</Text>
-
-        <Field label="Doctor" value={doctor} onChangeText={setDoctor} placeholder="e.g. Dr. Sharma" testID="checkup-doctor" />
         <Field label="Location" value={location} onChangeText={setLocation} placeholder="e.g. Apollo Hospital" testID="checkup-location" />
-        <Field label="Notes" value={notes} onChangeText={setNotes} placeholder="Optional details" multiline testID="checkup-notes" />
+        <Field label="Notes (optional)" value={notes} onChangeText={setNotes} placeholder="Instructions or questions for your doctor" multiline testID="checkup-notes" />
 
         <VoiceNoteField value={voiceNote} disabled={saving} />
         {error ? <Text style={styles.error}>{error}</Text> : null}
+      </ScrollView>
+      <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: insets.bottom + 12, borderTopWidth: 1, borderTopColor: colors.divider }}>
         <PrimaryButton
           testID="save-checkup-button"
-          label={saving ? "Saving…" : existing ? "Save checkup" : "Add checkup"}
+          label={saving ? "Saving…" : existing ? "Save changes" : "Save checkup"}
           onPress={save}
           disabled={saving || voiceNote.busy}
         />
-        {existing ? (
-          <Pressable onPress={remove} disabled={saving || voiceNote.busy} style={({ pressed }) => [styles.delete, pressed && styles.pressed]} testID="delete-checkup-button">
-            <Text style={styles.deleteText}>Delete checkup</Text>
-          </Pressable>
-        ) : null}
-      </ScrollView>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -312,7 +254,7 @@ const useStyles = makeStyles((colors) =>
     multiline: { minHeight: 88, paddingTop: 14, textAlignVertical: "top" },
     chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     chip: {
-      minHeight: 40,
+      minHeight: 48,
       borderRadius: 999,
       borderWidth: 1,
       borderColor: colors.borderStrong,

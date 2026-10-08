@@ -3,7 +3,8 @@ import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useRef, useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { TextInput } from "@/src/components/focus-input";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ErrorState, LoadingState, PrimaryButton } from "@/src/components/dawai-ui";
@@ -64,6 +65,7 @@ type MedicineFormMode = { kind: "create" } | { kind: "edit"; medicine: Medicine 
 
 function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
   const router = useRouter();
+  const prescription = useLocalSearchParams<{ prescriptionName?: string; prescriptionDosage?: string; prescriptionInstructions?: string; prescriptionMember?: string }>();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const styles = useStyles();
@@ -97,11 +99,11 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
   const { members, activeMemberId, addMedicine, updateMedicine, archiveMedicine } = useData();
   const existing = mode.kind === "edit" ? mode.medicine : undefined;
 
-  const [name, setName] = useState(existing?.name ?? "");
-  const [dosage, setDosage] = useState(existing?.dosage ?? "");
+  const [name, setName] = useState(existing?.name ?? prescription.prescriptionName ?? "");
+  const [dosage, setDosage] = useState(existing?.dosage ?? prescription.prescriptionDosage ?? "");
   const [frequency, setFrequency] = useState(existing?.frequency ?? "Daily");
-  const [times, setTimes] = useState<string[]>(existing?.times ?? ["08:00"]);
-  const [instructions, setInstructions] = useState(existing?.instructions ?? "");
+  const [times, setTimes] = useState<string[]>(existing?.times ?? (prescription.prescriptionName ? [] : ["08:00"]));
+  const [instructions, setInstructions] = useState(existing?.instructions ?? prescription.prescriptionInstructions ?? "");
   const [quantity, setQuantity] = useState(existing ? String(existing.quantity_total || "") : "");
   const [identification, setIdentification] = useState(existing?.identification_cue || "");
   const [imageUrl, setImageUrl] = useState(existing?.image_url || "");
@@ -109,7 +111,7 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
     base64: string;
     contentType: string;
   } | null>(null);
-  const [memberId, setMemberId] = useState<string | null>(existing ? existing.member_id ?? null : activeMemberId);
+  const [memberId, setMemberId] = useState<string | null>(existing ? existing.member_id ?? null : prescription.prescriptionMember ?? activeMemberId);
   const [days, setDays] = useState<number[]>(existing?.days?.length ? existing.days : [0, 1, 2, 3, 4, 5, 6]);
   const voiceNote = useVoiceNote(existing?.voice_note_url ?? "");
   const [saving, setSaving] = useState(false);

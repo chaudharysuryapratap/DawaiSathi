@@ -3,6 +3,18 @@ import { Platform } from "react-native";
 
 export function normalizedFamilyCode(code: string) { return code.replace(/[\s-]/g, "").toUpperCase(); }
 export function isFamilyCode(code: string) { return /^[0-9A-F]{16}$/.test(normalizedFamilyCode(code)); }
+export function familyCodeFromQr(data: string): string | null {
+  if (/^FAM-[0-9A-F]{32}$/.test(data.trim())) return data.trim();
+  if (isFamilyCode(data)) return normalizedFamilyCode(data);
+  try {
+    const url = new URL(data);
+    if (!["http:", "https:", "exp:", "exps:", "frontend:"].includes(url.protocol)) return null;
+    if (!(url.pathname.endsWith("/join-family") || (url.protocol === "frontend:" && url.hostname === "join-family"))) return null;
+    const code = url.searchParams.get("code") ?? "";
+    if (/^FAM-[0-9A-F]{32}$/.test(code)) return code;
+    return isFamilyCode(code) ? normalizedFamilyCode(code) : null;
+  } catch { return null; }
+}
 export function displayFamilyCode(code: string) { return normalizedFamilyCode(code).match(/.{1,4}/g)?.join("-") ?? code; }
 export function familyJoinUrl(code: string) {
   const appUrl = process.env.EXPO_PUBLIC_APP_URL;

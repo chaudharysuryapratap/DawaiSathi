@@ -187,8 +187,8 @@ export const api = {
   deletedFamilyGroups: () => request<{ id: string; name: string; recover_until: string }[]>("/family-groups/deleted"),
   deleteFamilyGroup: (id: string) => request<{ ok: boolean; recover_until: string }>(`/family-groups/${encodeURIComponent(id)}`, { method: "DELETE" }),
   restoreFamilyGroup: (id: string) => request<{ ok: boolean }>(`/family-groups/${encodeURIComponent(id)}/restore`, { method: "POST" }),
-  createFamilyGroup: (name: string) =>
-    request<FamilyGroup>("/family-groups", { method: "POST", body: JSON.stringify({ name }) }),
+  createFamilyGroup: (name: string, role: "member" | "care_taker" = "member") =>
+    request<FamilyGroup>("/family-groups", { method: "POST", body: JSON.stringify({ name, role }) }),
   renameFamilyGroup: (id: string, name: string) =>
     request<FamilyGroup>(`/family-groups/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
 
@@ -204,7 +204,7 @@ export const api = {
   removeMember: (id: string) =>
     request<{ ok: boolean }>(`/members/${id}`, { method: "DELETE" }),
   removeFamilyProfile: (groupId: string, id: string) =>
-    request<{ ok: boolean }>(`/family-groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    request<{ ok: boolean }>(`/family-management/${encodeURIComponent(groupId)}/members/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
   medicines: (memberId?: string | null, activeOnly = true, familyGroupId?: string | null) =>
     request<Medicine[]>(

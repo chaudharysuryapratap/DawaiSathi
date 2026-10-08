@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { TextInput } from "@/src/components/focus-input";
 
 import { FamilyInviteSheet } from "@/src/components/family-invite-sheet";
 import { SwipeDeleteRow } from "@/src/components/swipe-delete-row";
@@ -26,6 +27,7 @@ export function MemberSelector() {
   const [openRow, setOpenRow] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Member | null>(null);
   const deleting = useRef(false);
+  const rowTouch = useRef({ x: 0, y: 0, moved: false });
   const ownsFamily = activeFamilyGroup?.owner_user_id === user?.id;
 
   const label = activeMember?.name ?? "Select member";
@@ -78,8 +80,11 @@ export function MemberSelector() {
       </Pressable>
       <BottomSheet
         visible={showPicker}
+        onDismissAll={() => { if (!busy) { setShowPicker(false); setPendingDelete(null); setRenameId(null); setError(null); } }}
         onClose={() => {
           if (busy) return;
+          if (pendingDelete) { setPendingDelete(null); return; }
+          if (renameId) { setRenameId(null); return; }
           setShowPicker(false);
           setRenameId(null);
           setError(null);
@@ -104,9 +109,11 @@ export function MemberSelector() {
             return (
               <SwipeDeleteRow key={member.id} testID={`member-swipe-${member.id}`} label="Remove"
                 open={openRow === member.id} disabled={busy || editing || member.is_primary || !ownsFamily}
-                onOpen={() => setOpenRow(member.id)} onClose={() => setOpenRow(current => current === member.id ? null : current)}
+                onOpen={() => { rowTouch.current.moved = true; setOpenRow(member.id); }} onClose={() => setOpenRow(current => current === member.id ? null : current)}
                 onRequestDelete={() => { setOpenRow(null); setError(null); setPendingDelete(member); }}>
-              <View style={[styles.row, active && styles.rowSelected]}>
+              <View style={[styles.row, active && styles.rowSelected]}
+                onTouchStart={event => { rowTouch.current = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY, moved: false }; }}
+                onTouchMove={event => { if (Math.abs(event.nativeEvent.pageX - rowTouch.current.x) > 8 || Math.abs(event.nativeEvent.pageY - rowTouch.current.y) > 8) rowTouch.current.moved = true; }}>
                 <Pressable
                   testID={`member-${member.id}`}
                   accessibilityRole="button"
@@ -114,6 +121,9 @@ export function MemberSelector() {
                   accessibilityState={{ selected: active }}
                   disabled={busy || editing}
                   onPress={() => {
+                    // Gesture handlers can deliver a child press after a swipe.
+                    // Only a stationary tap should select a member and close the picker.
+                    if (rowTouch.current.moved || openRow === member.id) return;
                     setActiveMember(member.id);
                     setShowPicker(false);
                   }}
@@ -136,7 +146,7 @@ export function MemberSelector() {
                     ) : (
                       <Text style={styles.name}>{member.name}</Text>
                     )}
-                    <Text style={styles.role}>{member.is_primary ? "Primary member" : member.role || "Member"}</Text>
+                    <Text style={styles.role}>{member.is_primary ? "Primary member" : member.role === "care_taker" ? "Caretaker" : "Member"}</Text>
                   </View>
                 </Pressable>
                 <View style={styles.rowActions}>
@@ -171,7 +181,7 @@ export function MemberSelector() {
           <Image source={require("../../assets/images/member-invite.svg")} style={styles.inviteArt} contentFit="cover" accessible={false} />
           <Text style={styles.cardTitle}>Add family member</Text>
           <Text style={styles.cardDescription}>Add someone you care for to this family group.</Text>
-          <Pressable accessibilityRole="button" disabled={!activeFamilyGroup || activeFamilyGroup.owner_user_id !== user?.id} onPress={() => { setShowPicker(false); setInviting(true); }} testID="member-invite" style={({ pressed }) => [styles.inviteButton, pressed && styles.pressed, activeFamilyGroup?.owner_user_id !== user?.id && { opacity: 0.5 }]}>
+          <Pressable accessibilityRole="button" disabled={!activeFamilyGroup || activeFamilyGroup.owner_user_id !== user?.id} onPress={() => { setInviting(true); }} testID="member-invite" style={({ pressed }) => [styles.inviteButton, pressed && styles.pressed, activeFamilyGroup?.owner_user_id !== user?.id && { opacity: 0.5 }]}>
             <Text style={styles.inviteLabel}>Invite member</Text><Ionicons name="add" size={26} color={colors.onBrandPrimary} />
           </Pressable>
           {activeFamilyGroup?.owner_user_id !== user?.id && <Text style={styles.role}>Only the family owner can invite accounts.</Text>}

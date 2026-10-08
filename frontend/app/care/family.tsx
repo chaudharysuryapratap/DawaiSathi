@@ -1,10 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { TextInput } from "@/src/components/focus-input";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PrimaryButton } from "@/src/components/dawai-ui";
+import { SwipeDeleteRow } from "@/src/components/swipe-delete-row";
+import { DeleteConfirmation } from "@/src/components/delete-confirmation";
+import { BottomSheet } from "@/src/components/bottom-sheet";
+import { useAuth } from "@/src/auth-context";
 import { useData } from "@/src/data-context";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -12,6 +17,9 @@ export default function FamilyScreen() {
   const { colors } = useTheme();
   const styles = useStyles();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const [openRow, setOpenRow] = useState<string | null>(null);
+  const [pendingRemove, setPendingRemove] = useState<string | null>(null);
   const params = useLocalSearchParams<{ id?: string }>();
   const {
     activeFamilyGroup,
@@ -60,11 +68,14 @@ export default function FamilyScreen() {
   };
 
   const remove = async (id: string) => {
+    if (busy) return;
     setBusy(true);
+    setError(null);
     try {
       await removeMember(id);
+      setPendingRemove(null);
     } catch (requestError) {
-      Alert.alert("Couldn’t remove", requestError instanceof Error ? requestError.message : "Try again");
+      setError(requestError instanceof Error ? requestError.message : "Couldn’t remove this member.");
     } finally {
       setBusy(false);
     }
@@ -137,7 +148,8 @@ export default function FamilyScreen() {
           {members.map((member) => {
             const editing = renameId === member.id;
             return (
-              <View key={member.id} style={styles.row}>
+              <SwipeDeleteRow testID={`care-member-swipe-${member.id}`} key={member.id} open={openRow === member.id} disabled={busy || editing || member.is_primary || activeFamilyGroup?.owner_user_id !== user?.id} label="Remove" onOpen={() => setOpenRow(member.id)} onClose={() => setOpenRow(current => current === member.id ? null : current)} onRequestDelete={() => { setOpenRow(null); setError(null); setPendingRemove(member.id); }}>
+              <View style={styles.row}>
                 <View style={[styles.avatar, { backgroundColor: member.color }]}>
                   <Text style={styles.avatarLetter}>{member.name.slice(0, 1).toUpperCase()}</Text>
                 </View>
@@ -153,7 +165,7 @@ export default function FamilyScreen() {
                   ) : (
                     <Text style={styles.name}>{member.name}</Text>
                   )}
-                  <Text style={styles.role}>{member.is_primary ? "Primary member" : member.role || "Member"}</Text>
+                  <Text style={styles.role}>{member.is_primary ? "Primary member" : member.role === "care_taker" ? "Caretaker" : "Member"}</Text>
                 </View>
                 {editing ? (
                   <View style={styles.rowActions}>
@@ -172,14 +184,15 @@ export default function FamilyScreen() {
                     <Pressable onPress={() => { setRenameId(member.id); setRenameValue(member.name); }} style={({ pressed }) => [styles.mini, pressed && styles.pressed]} testID={`family-edit-${member.id}`}>
                       <Ionicons name="pencil" size={16} color={colors.onSurfaceSecondary} />
                     </Pressable>
-                    {!member.is_primary ? (
-                      <Pressable disabled={busy} onPress={() => remove(member.id)} style={({ pressed }) => [styles.mini, pressed && styles.pressed]} testID={`family-remove-${member.id}`}>
+                    {!member.is_primary && activeFamilyGroup?.owner_user_id === user?.id ? (
+                      <Pressable disabled={busy} onPress={() => { setError(null); setPendingRemove(member.id); }} style={({ pressed }) => [styles.mini, pressed && styles.pressed]} testID={`family-remove-${member.id}`}>
                         <Ionicons name="trash-outline" size={16} color={colors.error} />
                       </Pressable>
                     ) : null}
                   </View>
                 )}
               </View>
+              </SwipeDeleteRow>
             );
           })}
         </View>
@@ -198,6 +211,9 @@ export default function FamilyScreen() {
           {error ? <Text style={styles.error}>{error}</Text> : null}
         </View>
       </ScrollView>
+      <BottomSheet visible={pendingRemove !== null} title="Remove family member?" onClose={() => { if (!busy) setPendingRemove(null); }}>
+        <DeleteConfirmation message="Remove this care profile and its health records from this family? Login accounts and other families stay unchanged." label="Remove member" busy={busy} error={error} onCancel={() => setPendingRemove(null)} onConfirm={() => { if (pendingRemove) void remove(pendingRemove); }} />
+      </BottomSheet>
     </View>
   );
 }

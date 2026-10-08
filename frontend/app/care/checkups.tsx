@@ -1,214 +1,63 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
-import { Alert, AppState, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-
-import { LoadingState, PrimaryButton } from "@/src/components/dawai-ui";
+import { useEffect, useState } from "react";
+import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
+import Svg, { Circle, Line, Rect } from "react-native-svg";
+import { BottomSheet } from "@/src/components/bottom-sheet";
+import { ErrorState, LoadingState, PrimaryButton, ScreenShell } from "@/src/components/dawai-ui";
 import { useData } from "@/src/data-context";
-import { formatIsoDateTime } from "@/src/dose-status";
 import { makeStyles, useTheme } from "@/src/theme";
+import type { Checkup } from "@/src/types";
+import { checkupSchedule } from "@/src/checkup-schedule";
 
+export function checkupWhen(value: string) {
+  const date = new Date(value), today = new Date(), tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  const day = date.toDateString() === today.toDateString() ? "Today" : date.toDateString() === tomorrow.toDateString() ? "Tomorrow" : date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  return `${day}, ${date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+}
 export default function CheckupsScreen() {
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const styles = useStyles();
-  const { colors } = useTheme();
-  const params = useLocalSearchParams<{ id?: string }>();
-  const { checkups, members, loading, removeCheckup } = useData();
-
-  const [now, setNow] = useState<number | null>(null);
-  useEffect(() => {
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    let active = true;
-    const resyncTime = () => {
-      if (!active) return;
-      if (timeout !== undefined) clearTimeout(timeout);
-      const currentTime = Date.now();
-      setNow(currentTime);
-      const nextBoundary = checkups.reduce((next, checkup) => {
-        const scheduledAt = new Date(checkup.scheduled_at).getTime();
-        return scheduledAt > currentTime ? Math.min(next, scheduledAt) : next;
-      }, Number.POSITIVE_INFINITY);
-      if (Number.isFinite(nextBoundary)) {
-        timeout = setTimeout(
-          resyncTime,
-          Math.min(nextBoundary - currentTime + 1, 2_147_483_647),
-        );
-      }
-    };
-
-    resyncTime();
-    const appStateSubscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") resyncTime();
-    });
-    const handleVisible = () => {
-      if (document.visibilityState === "visible") resyncTime();
-    };
-    if (Platform.OS === "web" && typeof document !== "undefined") {
-      document.addEventListener("visibilitychange", handleVisible);
-      window.addEventListener("focus", resyncTime);
-    }
-
-    return () => {
-      active = false;
-      if (timeout !== undefined) clearTimeout(timeout);
-      appStateSubscription.remove();
-      if (Platform.OS === "web" && typeof document !== "undefined") {
-        document.removeEventListener("visibilitychange", handleVisible);
-        window.removeEventListener("focus", resyncTime);
-      }
-    };
-  }, [checkups]);
-  const upcoming = useMemo(
-    () => (now === null ? [] : checkups.filter((checkup) => new Date(checkup.scheduled_at).getTime() >= now)),
-    [checkups, now],
-  );
-  const past = useMemo(
-    () => (now === null ? [] : checkups.filter((checkup) => new Date(checkup.scheduled_at).getTime() < now)),
-    [checkups, now],
-  );
-  const highlight = params.id ? checkups.find((checkup) => checkup.id === params.id) : null;
-
-  const confirmDelete = (id: string) => {
-    Alert.alert("Delete checkup?", "This will remove the reminder.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => removeCheckup(id) },
-    ]);
-  };
-
-  return (
-    <View style={styles.root}>
-      <Stack.Screen options={{ title: "Checkups" }} />
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 60 }]}>
-        <View style={styles.head}>
-          <Text style={styles.eyebrow}>CHECKUPS</Text>
-          <Text style={styles.title}>Doctor visits & labs</Text>
-          <Text style={styles.subtitle}>Upcoming checkups pop up on Today automatically.</Text>
-        </View>
-
-        {loading ? (
-          <LoadingState label="Loading checkups" />
-        ) : (
-          <>
-            <Section title={`Upcoming · ${upcoming.length}`}>
-              {upcoming.length === 0 ? (
-                <Text style={styles.empty}>No upcoming checkups.</Text>
-              ) : (
-                upcoming.map((checkup) => {
-                  const owner = checkup.member_id ? members.find((member) => member.id === checkup.member_id) : null;
-                  const isHighlight = highlight?.id === checkup.id;
-                  return (
-                    <View key={checkup.id} style={[styles.row, isHighlight && styles.rowHighlight]} testID={`checkup-row-${checkup.id}`}>
-                      <View style={[styles.rowIcon, { backgroundColor: colors.info }]}>
-                        <Ionicons name="calendar-outline" size={18} color="#FFFFFF" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.rowTitle}>{checkup.title}</Text>
-                        <Text style={styles.rowMeta}>{formatIsoDateTime(checkup.scheduled_at)}</Text>
-                        {checkup.doctor || checkup.location ? (
-                          <Text style={styles.rowSub}>{[checkup.doctor, checkup.location].filter(Boolean).join(" · ")}</Text>
-                        ) : null}
-                        {owner ? <Text style={styles.rowOwner}>For {owner.name}</Text> : null}
-                      </View>
-                      <View style={styles.rowActions}>
-                        <Pressable
-                          onPress={() => router.push({ pathname: "/add-checkup", params: { id: checkup.id } })}
-                          style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
-                          testID={`checkup-edit-${checkup.id}`}
-                        >
-                          <Ionicons name="pencil" size={14} color={colors.brandPrimary} />
-                        </Pressable>
-                        <Pressable
-                          onPress={() => confirmDelete(checkup.id)}
-                          style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
-                          testID={`checkup-delete-${checkup.id}`}
-                        >
-                          <Ionicons name="trash-outline" size={14} color={colors.error} />
-                        </Pressable>
-                      </View>
-                    </View>
-                  );
-                })
-              )}
-            </Section>
-
-            <Section title={`Past · ${past.length}`}>
-              {past.length === 0 ? (
-                <Text style={styles.empty}>No past checkups.</Text>
-              ) : (
-                past.map((checkup) => {
-                  const owner = checkup.member_id ? members.find((member) => member.id === checkup.member_id) : null;
-                  return (
-                    <View key={checkup.id} style={styles.row}>
-                      <View style={styles.rowIcon}>
-                        <Ionicons name="checkmark-done-outline" size={18} color={colors.brandPrimary} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.rowTitle}>{checkup.title}</Text>
-                        <Text style={styles.rowMeta}>{formatIsoDateTime(checkup.scheduled_at)}</Text>
-                        {owner ? <Text style={styles.rowOwner}>For {owner.name}</Text> : null}
-                      </View>
-                    </View>
-                  );
-                })
-              )}
-            </Section>
-
-            <PrimaryButton label="Add checkup" icon="calendar" onPress={() => router.push("/add-checkup")} testID="checkups-add" />
-          </>
-        )}
-      </ScrollView>
-    </View>
-  );
+  const router = useRouter(), params = useLocalSearchParams<{ id?: string; past?: string; message?: string }>();
+  const { checkups, members, loading, error, refresh, removeCheckup } = useData();
+  const { colors } = useTheme(), styles = useStyles();
+  const [now, setNow] = useState(() => Date.now());
+  const [confirm, setConfirm] = useState(false), [busy, setBusy] = useState(false), [deleteError, setDeleteError] = useState("");
+  useEffect(() => { const tick = setInterval(() => setNow(Date.now()), 30000); const listener = AppState.addEventListener("change", state => { if (state === "active") setNow(Date.now()); }); return () => { clearInterval(tick); listener.remove(); }; }, []);
+  const { upcoming, past } = checkupSchedule(checkups, new Date(now));
+  const selected = checkups.find(item => item.id === params.id);
+  const owner = (item: Checkup) => members.find(member => member.id === item.member_id)?.name ?? "Family";
+  const card = (item: Checkup, next = false) => <Pressable key={item.id} accessibilityRole="button" testID={`checkup-row-${item.id}`} onPress={() => router.push({ pathname: "/care/checkups", params: { id: item.id } })} style={[styles.card, next && styles.next]}>
+    {next ? <Text style={styles.section}>Next checkup</Text> : null}
+    <View style={styles.row}><Ionicons name="calendar-outline" size={30} color={colors.brandPrimary} /><View style={{ flex: 1, gap: 5 }}><Text style={styles.cardTitle}>{item.title}</Text>{item.doctor ? <Text style={styles.meta}>{item.doctor}</Text> : null}<Text style={styles.meta}>{checkupWhen(item.scheduled_at)}</Text><Text style={styles.meta}>{next && item.location ? item.location : owner(item)}</Text></View><Ionicons name="chevron-forward" size={20} color={colors.muted} /></View>
+  </Pressable>;
+  const remove = async () => { if (!selected || busy) return; setBusy(true); setDeleteError(""); try { await removeCheckup(selected.id); setConfirm(false); router.replace("/care/checkups"); } catch (e) { setDeleteError(e instanceof Error ? e.message : "Could not delete checkup. Try again."); } finally { setBusy(false); } };
+  return <ScreenShell testID="checkups-screen">
+    <Stack.Screen options={{ title: params.id ? "Checkup details" : params.past ? "Past checkups" : "Checkups" }} />
+    {loading ? <LoadingState label="Loading checkups" /> : error ? <ErrorState message={error} onRetry={refresh} /> : params.id ? selected ? <>
+      <View style={[styles.card, styles.next]}><Text style={styles.title}>{selected.title}</Text><Text style={styles.meta}>For {owner(selected)}</Text>{selected.doctor ? <Text style={styles.meta}>{selected.doctor}</Text> : null}<Text style={styles.meta}>{checkupWhen(selected.scheduled_at)}</Text>{selected.location ? <Text style={styles.meta}>{selected.location}</Text> : null}</View>
+      {new Date(selected.scheduled_at).getTime() < now ? <PrimaryButton label="Add as new checkup" icon="calendar-outline" onPress={() => router.push({ pathname: "/add-checkup", params: { copyId: selected.id } })} /> : <><PrimaryButton label="Edit checkup" icon="pencil-outline" variant="secondary" onPress={() => router.push({ pathname: "/add-checkup", params: { id: selected.id } })} /><PrimaryButton label="Delete checkup" icon="trash-outline" variant="danger" onPress={() => setConfirm(true)} /></>}
+      {selected.notes ? <View style={styles.card}><Text style={styles.section}>Notes</Text><Text style={styles.meta}>{selected.notes}</Text></View> : null}
+    </> : <Text style={styles.meta}>This checkup is no longer available.</Text> : params.past ? <><Text style={styles.title}>Past checkups</Text><Text style={styles.meta}>Previous scheduled doctor visits.</Text>{past.length ? past.map(item => card(item)) : <Text style={styles.meta}>No past checkups.</Text>}</> : <>
+      <View style={{ gap: 5 }}><Text style={styles.title}>Checkups</Text><Text style={styles.meta}>Keep track of doctor visits and checkups.</Text></View>
+      {params.message ? <Text accessibilityLiveRegion="polite" style={{ color: colors.success }}>{params.message}</Text> : null}
+      {upcoming.length ? card(upcoming[0], true) : <View style={styles.empty}>
+        <Svg width={156} height={156} viewBox="0 0 156 156" accessible={false}>
+          <Circle cx={72} cy={82} r={61} fill="#EAF6F3" />
+          <Rect x={45} y={56} width={56} height={55} rx={6} fill="none" stroke={colors.brandPrimary} strokeWidth={3} />
+          <Line x1={45} y1={70} x2={101} y2={70} stroke={colors.brandPrimary} strokeWidth={3} />
+          <Line x1={57} y1={50} x2={57} y2={61} stroke={colors.brandPrimary} strokeWidth={3} strokeLinecap="round" />
+          <Line x1={89} y1={50} x2={89} y2={61} stroke={colors.brandPrimary} strokeWidth={3} strokeLinecap="round" />
+          {[[79,79],[90,79],[57,90],[68,90],[79,90],[90,90],[57,101],[68,101],[79,101]].map(([x,y]) => <Rect key={`${x}-${y}`} x={x} y={y} width={4} height={4} rx={0.7} fill={colors.brandPrimary} />)}
+          <Line x1={128} y1={35} x2={134} y2={28} stroke={colors.brandPrimary} strokeWidth={2.5} strokeLinecap="round" />
+          <Line x1={135} y1={46} x2={144} y2={44} stroke={colors.brandPrimary} strokeWidth={2.5} strokeLinecap="round" />
+        </Svg>
+        <Text style={styles.cardTitle}>No upcoming checkups</Text><Text style={[styles.meta, { textAlign: "center" }]}>Add your next doctor visit so you do not forget it.</Text></View>}
+      <PrimaryButton label="Add checkup" icon="add" onPress={() => router.push("/add-checkup")} testID="checkups-add" />
+      {upcoming.length > 1 ? <><Text style={styles.section}>Upcoming checkups</Text>{upcoming.slice(1).map(item => card(item))}</> : null}
+      <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: "/care/checkups", params: { past: "1" } })} style={[styles.card, styles.row]} testID="past-checkups"><Ionicons name="time-outline" size={26} color={colors.brandPrimary} /><View style={{ flex: 1 }}><Text style={styles.cardTitle}>Past checkups</Text><Text style={styles.meta}>View your previous visits</Text></View><Ionicons name="chevron-forward" size={20} color={colors.muted} /></Pressable>
+    </>}
+    <BottomSheet visible={confirm} onClose={() => { if (!busy) setConfirm(false); }} title="Delete this checkup?" description="This checkup will be permanently removed.">
+      {deleteError ? <Text style={{ color: colors.error }}>{deleteError}</Text> : null}<PrimaryButton label="Keep checkup" variant="secondary" disabled={busy} onPress={() => setConfirm(false)} /><PrimaryButton label={busy ? "Deleting…" : "Delete checkup"} variant="danger" disabled={busy} onPress={remove} />
+    </BottomSheet>
+  </ScreenShell>;
 }
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  const styles = useStyles();
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionLabel}>{title.toUpperCase()}</Text>
-      <View style={styles.sectionBody}>{children}</View>
-    </View>
-  );
-}
-
-const useStyles = makeStyles((colors) =>
-  StyleSheet.create({
-    root: { flex: 1, backgroundColor: colors.surface },
-    content: { padding: 20, gap: 16 },
-    head: { gap: 4 },
-    eyebrow: { color: colors.brandPrimary, fontSize: 12, fontWeight: "700", letterSpacing: 1.2 },
-    title: { color: colors.onSurface, fontSize: 24, fontWeight: "800" },
-    subtitle: { color: colors.muted, fontSize: 13 },
-    section: { gap: 8 },
-    sectionLabel: { color: colors.muted, fontSize: 11, fontWeight: "800", letterSpacing: 1 },
-    sectionBody: { gap: 8 },
-    row: {
-      minHeight: 78,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      padding: 14,
-      borderRadius: 18,
-      backgroundColor: colors.surfaceSecondary,
-    },
-    rowHighlight: { borderWidth: 2, borderColor: colors.brandPrimary },
-    rowIcon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: colors.brandTertiary },
-    rowTitle: { color: colors.onSurface, fontSize: 15, fontWeight: "800" },
-    rowMeta: { color: colors.onSurfaceSecondary, fontSize: 13, marginTop: 2 },
-    rowSub: { color: colors.muted, fontSize: 12, marginTop: 2 },
-    rowOwner: { color: colors.brandPrimary, fontSize: 12, marginTop: 2, fontWeight: "700" },
-    rowActions: { flexDirection: "row", gap: 6 },
-    actionButton: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.surfaceTertiary,
-    },
-    empty: { color: colors.muted, fontSize: 13, padding: 14 },
-    pressed: { opacity: 0.8 },
-  }),
-);
+const useStyles = makeStyles(colors => StyleSheet.create({ title: { color: colors.onSurface, fontSize: 24, fontWeight: "800" }, section: { color: colors.onSurface, fontSize: 17, fontWeight: "800" }, cardTitle: { color: colors.onSurface, fontSize: 17, fontWeight: "800" }, meta: { color: colors.onSurfaceSecondary, fontSize: 14, lineHeight: 21 }, card: { padding: 16, borderRadius: 20, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surfaceSecondary, gap: 10 }, next: { backgroundColor: colors.brandTertiary }, row: { flexDirection: "row", alignItems: "center", gap: 12 }, empty: { alignItems: "center", gap: 14, paddingVertical: 30 } }));

@@ -17,6 +17,9 @@ export type Account = {
 };
 
 export type Member = {
+  email?: string | null;
+  relationship?: string;
+  user_id?: string | null;
   id: string;
   name: string;
   role: string;

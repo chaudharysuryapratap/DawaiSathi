@@ -42,6 +42,7 @@ function harness(existing) {
     "@/src/theme": { useTheme: () => ({ colors: {} }), makeStyles: (fn) => () => fn({}) },
     "@/src/data-context": { useData: () => data },
     "@/src/components/dawai-ui": { PrimaryButton: "primary" },
+    "@/src/components/focus-input": { TextInput: "input" },
     "@/src/components/voice-note-field": { VoiceNoteField: "voice-field", useVoiceNote: () => ({ busy: false, save: async () => "", reset: () => calls.push(["voice-reset"]) }) },
     "@/src/components/medicine-time-picker": { MedicineTimePicker: "time-picker" },
     "@/src/api": {

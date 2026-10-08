@@ -35,7 +35,7 @@ type DataContextValue = {
   activeFamilyGroup: FamilyGroup | null;
   activeFamilyGroupId: string | null;
   setActiveFamilyGroup: (id: string | null) => void;
-  createFamilyGroup: (name: string) => Promise<FamilyGroup>;
+  createFamilyGroup: (name: string, role?: "member" | "care_taker") => Promise<FamilyGroup>;
   renameFamilyGroup: (id: string, name: string) => Promise<void>;
   leaveFamilyGroup: (id: string) => Promise<void>;
   deleteFamilyGroup: (id: string) => Promise<void>;
@@ -281,8 +281,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       activeFamilyGroup,
       activeFamilyGroupId,
       setActiveFamilyGroup,
-      createFamilyGroup: async (name) => {
-        const created = await api.createFamilyGroup(name);
+      createFamilyGroup: async (name, role) => {
+        const created = await api.createFamilyGroup(name, role);
         await refresh();
         setActiveFamilyGroup(created.id);
         return created;

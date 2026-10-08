@@ -69,11 +69,10 @@ export function formatIsoDateTime(value: string): string {
   });
 }
 
-export function relativeCheckup(value: string): string {
+export function relativeCheckup(value: string, now = new Date()): string {
   const scheduled = new Date(value);
-  const now = new Date();
-  const days = Math.floor((scheduled.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  if (days === 0) return `Today · ${scheduled.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
-  if (days === 1) return `Tomorrow · ${scheduled.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+  if (scheduled.toDateString() === now.toDateString()) return `Today · ${scheduled.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  if (scheduled.toDateString() === tomorrow.toDateString()) return `Tomorrow · ${scheduled.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
   return scheduled.toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 }

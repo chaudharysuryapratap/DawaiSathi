@@ -1,8 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AppState, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 import { AppHeader } from "@/src/components/app-header";
 import { authHeaders, resolveMediaUrl } from "@/src/api";
@@ -12,6 +12,7 @@ import { EyeDropDetailSheet } from "@/src/components/eye-drop-detail-sheet";
 import { MedicineDetailSheet } from "@/src/components/medicine-detail-sheet";
 import { StatusPill } from "@/src/components/status-pill";
 import { useData } from "@/src/data-context";
+import { checkupSchedule } from "@/src/checkup-schedule";
 import {
   TIME_SLOTS,
   TIME_SLOT_LABEL,
@@ -37,8 +38,8 @@ export default function TodayScreen() {
     todayProtocols,
     medicines,
     protocols,
-    upcomingCheckup,
-    activeMember,
+    checkups,
+    activeMemberId,
     loading,
     error,
     refresh,
@@ -51,6 +52,13 @@ export default function TodayScreen() {
   const [doseActionMessage, setDoseActionMessage] = useState<string | null>(null);
   const [doseActionError, setDoseActionError] = useState<string | null>(null);
   const doseActionsInFlight = useRef(new Set<string>());
+  const [calendarNow, setCalendarNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setCalendarNow(new Date()), 60000);
+    const subscription = AppState.addEventListener("change", state => { if (state === "active") setCalendarNow(new Date()); });
+    return () => { clearInterval(timer); subscription.remove(); };
+  }, []);
+  const upcomingCheckup = checkupSchedule(checkups, calendarNow, activeMemberId).today[0];
 
   const toggleDoseTaken = async (dose: TodayDose) => {
     if (doseActionsInFlight.current.has(dose.dose_id)) return;
@@ -115,23 +123,23 @@ export default function TodayScreen() {
         <LoadingState label="Loading today’s doses" />
       ) : error ? (
         <ErrorState message={error} onRetry={refresh} />
-      ) : nothingToShow ? (
+      ) : nothingToShow && !upcomingCheckup ? (
         <EmptyMedicineState onPress={() => router.push("/add-medicine")} />
       ) : (
         <>
           {upcomingCheckup ? (
             <Pressable
               testID="today-upcoming-checkup"
-              onPress={() => router.push({ pathname: "/care/checkups", params: { id: upcomingCheckup.id } })}
+              onPress={() => router.push("/care/checkups")}
               style={({ pressed }) => [styles.checkupCard, pressed && styles.pressed]}
             >
               <View style={styles.checkupIcon}>
                 <Ionicons name="calendar-outline" size={22} color={colors.info} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.checkupEyebrow}>Upcoming checkup</Text>
+                <Text style={styles.checkupEyebrow}>Today’s checkup</Text>
                 <Text style={styles.checkupTitle}>{upcomingCheckup.title}</Text>
-                <Text style={styles.checkupMeta}>{relativeCheckup(upcomingCheckup.scheduled_at)}</Text>
+                <Text style={styles.checkupMeta}>{relativeCheckup(upcomingCheckup.scheduled_at, calendarNow)}</Text>
                 {upcomingCheckup.doctor || upcomingCheckup.location ? (
                   <Text style={styles.checkupDetails}>
                     {[upcomingCheckup.doctor, upcomingCheckup.location].filter(Boolean).join(" · ")}
@@ -145,11 +153,9 @@ export default function TodayScreen() {
           <View style={styles.progressWrap}>
             <View style={styles.progressText}>
               <Text style={styles.progressPrimary}>
-                {taken} / {total} taken · {percent}%
+                {taken} of {total} doses taken
               </Text>
-              {activeMember ? (
-                <Text style={styles.progressSecondary}>{activeMember.name}</Text>
-              ) : null}
+              <Text style={styles.progressSecondary}>{percent}%</Text>
             </View>
             <View style={styles.progressBar}>
               <View style={[styles.progressFill, { width: `${percent}%` }]} />

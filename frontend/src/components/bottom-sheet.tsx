@@ -1,7 +1,13 @@
+/* React Compiler cannot model PanResponder callbacks or Reanimated's mutable shared values.
+ * Ref access is confined to event handlers/effects; presented intentionally retains exit frames. */
+/* eslint-disable react-hooks/refs, react-hooks/immutability, react-hooks/set-state-in-effect */
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Modal,
+  PanResponder,
+  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -12,12 +18,14 @@ import {
 } from "react-native";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { makeStyles, useTheme } from "@/src/theme";
 
 type Props = {
   visible: boolean;
   onClose: () => void;
+  onDismissAll?: () => void;
   title?: string;
   description?: string;
   footer?: React.ReactNode;
@@ -26,37 +34,82 @@ type Props = {
   testID?: string;
   appearance?: "default" | "family";
   headerAccessory?: React.ReactNode;
+  singleLineTitle?: boolean;
 };
 
-export function BottomSheet({ visible, onClose, title, description, footer, scrollable = true, children, testID, appearance = "default", headerAccessory }: Props) {
+const openSheets = new Map<symbol, () => void>();
+
+export function BottomSheet({ visible, onClose, onDismissAll, title, description, footer, scrollable = true, children, testID, appearance = "default", headerAccessory, singleLineTitle = false }: Props) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const maxSheetHeight = Math.min(height * 0.92, height - insets.top);
+  const [keyboardTop, setKeyboardTop] = useState<number | null>(null);
+  useEffect(() => {
+    const show = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillChangeFrame" : "keyboardDidShow", event => setKeyboardTop(event.endCoordinates.screenY));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardTop(null));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+  const availableHeight = Math.min(height, keyboardTop ?? height);
+  const maxSheetHeight = Math.max(120, Math.min(availableHeight * 0.92, availableHeight - insets.top));
   const styles = useStyles();
   const { colors } = useTheme();
   const translate = useSharedValue(400);
+  const identity = useRef(Symbol("sheet"));
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [presented, setPresented] = useState(visible);
+  const [closeRevision, setCloseRevision] = useState(0);
+  const dismiss = (all = false) => {
+    Keyboard.dismiss();
+    translate.value = withTiming(height, { duration: 220, easing: Easing.in(Easing.cubic) });
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      (all ? onDismissAll ?? onClose : onClose)();
+      // A close can pop an internal page while keeping this same Modal visible.
+      // Restore its position even when `visible` has not changed.
+      setCloseRevision(value => value + 1);
+    }, 220);
+  };
   useEffect(() => {
-    translate.value = withTiming(visible ? 0 : 400, {
+    const id = identity.current;
+    if (visible) openSheets.set(id, () => dismiss(true));
+    return () => { openSheets.delete(id); };
+  });
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const gesture = PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gesture) => gesture.dy > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+    onPanResponderMove: (_, gesture) => { translate.value = Math.max(0, gesture.dy); },
+    onPanResponderRelease: (_, gesture) => { if (gesture.dy > 70 || gesture.vy > 0.7) dismiss(); else translate.value = withTiming(0, { duration: 180 }); },
+    onPanResponderTerminate: () => { translate.value = withTiming(0, { duration: 180 }); },
+  });
+  useEffect(() => {
+    if (visible) setPresented(true);
+    else {
+      const timeout = setTimeout(() => setPresented(false), 260);
+      return () => clearTimeout(timeout);
+    }
+  }, [visible]);
+  useEffect(() => {
+    translate.value = withTiming(visible ? 0 : height, {
       duration: 260,
       easing: Easing.out(Easing.cubic),
     });
-  }, [visible, translate]);
+  }, [visible, translate, height, closeRevision]);
   const animated = useAnimatedStyle(() => ({ transform: [{ translateY: translate.value }] }));
 
   const containerBody = (
     <>
-      <View style={styles.handle} />
+      <View {...gesture.panHandlers} testID="sheet-drag-area" style={{ marginHorizontal: -20, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 10, minHeight: 38 }} accessibilityLabel="Drag down to close"><View style={styles.handle} /></View>
       {title ? (
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
             {headerAccessory ? <View style={{ marginBottom: 16 }}>{headerAccessory}</View> : null}
-            <Text accessibilityRole="header" style={[styles.title, appearance === "family" && styles.familyTitle]}>{title}</Text>
+            <Text accessibilityRole="header" numberOfLines={singleLineTitle ? 1 : undefined} adjustsFontSizeToFit={singleLineTitle} minimumFontScale={0.65} style={[styles.title, appearance === "family" && styles.familyTitle, singleLineTitle && { fontSize: 22, letterSpacing: -0.5 }]}>{title}</Text>
             {description ? <Text style={[styles.description, appearance === "family" && styles.familyDescription]}>{description}</Text> : null}
           </View>
           <Pressable
             testID="sheet-close-button"
             accessibilityLabel="Close"
-            onPress={onClose}
+            onPress={() => dismiss()}
             style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
           >
             <Ionicons name="close" size={22} color={colors.onSurface} />
@@ -76,21 +129,25 @@ export function BottomSheet({ visible, onClose, title, description, footer, scro
 
   return (
     <Modal
-      visible={visible}
+      visible={presented}
       transparent
       animationType={Platform.OS === "web" ? "fade" : "none"}
-      onRequestClose={onClose}
+      onRequestClose={() => dismiss()}
     >
+      <GestureHandlerRootView unstable_forceActive style={styles.modalRoot}>
+      <KeyboardAvoidingView style={styles.modalRoot} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <View style={styles.modalRoot}>
         <Pressable
           style={styles.backdrop}
-          onPress={onClose}
+          onPress={() => { for (const close of openSheets.values()) close(); }}
           testID={testID ? `${testID}-backdrop` : undefined}
         />
-        <Animated.View style={[styles.sheet, { maxHeight: maxSheetHeight }, animated]} testID={testID}>
+        <Animated.View style={[styles.sheet, { maxHeight: "92%" }, animated]} testID={testID}>
           <View style={[styles.sheetInner, appearance === "family" && styles.familySheet, { paddingTop: 10, maxHeight: maxSheetHeight }]}>{containerBody}</View>
         </Animated.View>
       </View>
+      </KeyboardAvoidingView>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

@@ -5,14 +5,14 @@ import { Platform } from "react-native";
 import { BottomSheet } from "@/src/components/bottom-sheet";
 import { PrimaryButton } from "@/src/components/dawai-ui";
 
-type Props = { onSelect: (time: string) => void; disabled?: boolean };
+type Props = { onSelect: (time: string) => void; disabled?: boolean; label?: string; initialTime?: string };
 
 function timeValue(date: Date) {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
-export function MedicineTimePicker({ onSelect, disabled }: Props) {
-  const [value, setValue] = useState(() => new Date());
+export function MedicineTimePicker({ onSelect, disabled, label = "Choose another time", initialTime }: Props) {
+  const [value, setValue] = useState(() => { const date = new Date(); if (initialTime) { const [h,m] = initialTime.split(":").map(Number); date.setHours(h,m,0,0); } return date; });
   const [visible, setVisible] = useState(false);
 
   const open = () => {
@@ -34,7 +34,7 @@ export function MedicineTimePicker({ onSelect, disabled }: Props) {
 
   return (
     <>
-      <PrimaryButton testID="medicine-time-select" label="Choose another time" icon="time-outline" variant="secondary" disabled={disabled} onPress={open} />
+      <PrimaryButton testID="medicine-time-select" label={label} icon="time-outline" variant="secondary" disabled={disabled} onPress={open} />
       {Platform.OS === "ios" ? (
         <BottomSheet visible={visible} onClose={() => setVisible(false)} title="Reminder time" scrollable={false} footer={
           <PrimaryButton testID="medicine-time-confirm" label="Add time" onPress={() => {
