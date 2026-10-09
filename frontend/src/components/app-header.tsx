@@ -4,7 +4,7 @@ import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { AddSheet } from "@/src/components/add-sheet";
-import { useRouter } from "expo-router";
+import { InboxSheet } from "@/src/components/inbox-sheet";
 import { FamilyGroupSelector } from "@/src/components/family-group-selector";
 import { MemberSelector } from "@/src/components/member-selector";
 import { useData } from "@/src/data-context";
@@ -14,7 +14,7 @@ export function AppHeader({ testID }: { testID?: string }) {
   const { colors } = useTheme();
   const styles = useStyles();
   const { attention } = useData();
-  const router = useRouter();
+  const [showInbox, setShowInbox] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const count = attention.length;
   return (
@@ -26,7 +26,7 @@ export function AppHeader({ testID }: { testID?: string }) {
             scaleTo={0.88}
             testID="attention-button"
             accessibilityLabel={`Inbox${count ? `, ${count} alerts` : ""}`}
-            onPress={() => router.push("/inbox")}
+            onPress={() => setShowInbox(true)}
             style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
           >
             <Ionicons name="notifications-outline" size={22} color={colors.onSurface} />
@@ -50,6 +50,7 @@ export function AppHeader({ testID }: { testID?: string }) {
         <MemberSelector />
       </View>
       <AddSheet visible={showAdd} onClose={() => setShowAdd(false)} />
+      <InboxSheet visible={showInbox} onClose={() => setShowInbox(false)} />
     </View>
   );
 }

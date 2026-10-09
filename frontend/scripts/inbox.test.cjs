@@ -10,10 +10,13 @@ function harness({reject=false,reduced=false,canGoBack=false}={}){
   class Value{constructor(value){this.value=value;}stopAnimation(){}setValue(value){this.value=value;}interpolate(options){return options;}}
   mocks['react-native'].Animated={Value,View:'animated',timing:(value,options)=>({start(){calls.push(['animation',options]);value.value=options.toValue;}})};
   mocks['@/src/components/round-back-button']={RoundBackButton:'backbutton'};
+  mocks['@/src/components/bottom-sheet']={BottomSheet:'sheet'};
+  mocks['@/src/components/inbox-sheet']={InboxSheet:'sheet'};
   mocks['expo-router'].useRouter=()=>({canGoBack:()=>canGoBack,back:()=>calls.push(['back']),replace:route=>calls.push(['replace',route])});
   mocks['@/src/components/ui/useReduceMotion']={useReduceMotion:()=>reduced};
-  const filename=path.resolve(__dirname,'../app/inbox.tsx'),mod=new Module(filename,module);mod.require=id=>mocks[id]||require(id);mod._compile(ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,filename);
-  return{calls,render(){cursor=0;const tree=mod.exports.InboxContent({familyGroupId:'family'});while(effects.length)effects.shift()();return tree;}};
+  function load(relative){const filename=path.resolve(__dirname,relative),mod=new Module(filename,module);mod.require=id=>mocks[id]||require(id);mod._compile(ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,filename);return mod.exports;}
+  const mod=load('../src/components/inbox-sheet.tsx');
+  return{calls,sheet:mod.InboxSheet,route:load('../app/inbox.tsx').default,render(){cursor=0;const tree=mod.InboxContent({familyGroupId:'family'});while(effects.length)effects.shift()();return tree;}};
 }
 const settle=async()=>{await Promise.resolve();await Promise.resolve();await Promise.resolve();};
 test('All includes every inbox record; Missed excludes checkups and reminder requests',async()=>{
@@ -39,6 +42,16 @@ test('filter indicator slides natively and skips animation under Reduce Motion',
     const animation=app.calls.find(c=>c[0]==='animation');if(reduced)assert.equal(animation,undefined);else{assert.equal(animation[1].duration,220);assert.equal(animation[1].toValue,1);assert.equal(animation[1].useNativeDriver,true);}
   }
 });
-test('Inbox Back uses Today fallback only when navigation history is empty',()=>{
-  for(const canGoBack of [false,true]){const app=harness({canGoBack});nodes(app.render()).find(n=>n.type==='backbutton').props.onPress();assert.deepEqual(app.calls,[canGoBack?['back']:['replace','/']]);}
+test('legacy Inbox route closes safely with a Today fallback',()=>{
+  for(const canGoBack of [false,true]){const app=harness({canGoBack});app.route().props.onClose();assert.deepEqual(app.calls,[canGoBack?['back']:['replace','/']]);}
+});
+test('Inbox uses the shared sheet and unmounts its content while closed',()=>{
+  const app=harness();let closes=0;
+  const open=app.sheet({visible:true,onClose:()=>closes++});
+  assert.equal(open.type,'sheet');assert.equal(open.props.title,'Inbox');assert.ok(open.props.children);
+  open.props.onClose();assert.equal(closes,1);
+  assert.equal(app.sheet({visible:false,onClose:()=>{}}).props.children,false);
+  const tabs=nodes(app.render()).filter(n=>n.props?.accessibilityRole==='tab');
+  assert.equal(tabs[0].props.style.minHeight,44);
+  assert.equal(tabs[0].props.children.props.style[0].fontSize,15);
 });
