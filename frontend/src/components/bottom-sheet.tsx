@@ -1,3 +1,4 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 /* React Compiler cannot model PanResponder callbacks or Reanimated's mutable shared values.
  * Ref access is confined to event handlers/effects; presented intentionally retains exit frames. */
 /* eslint-disable react-hooks/refs, react-hooks/immutability, react-hooks/set-state-in-effect */
@@ -106,14 +107,14 @@ export function BottomSheet({ visible, onClose, onDismissAll, title, description
             <Text accessibilityRole="header" numberOfLines={singleLineTitle ? 1 : undefined} adjustsFontSizeToFit={singleLineTitle} minimumFontScale={0.65} style={[styles.title, appearance === "family" && styles.familyTitle, singleLineTitle && { fontSize: 22, letterSpacing: -0.5 }]}>{title}</Text>
             {description ? <Text style={[styles.description, appearance === "family" && styles.familyDescription]}>{description}</Text> : null}
           </View>
-          <Pressable
+          <PressableScale scaleTo={0.88} hitSlop={14}
             testID="sheet-close-button"
             accessibilityLabel="Close"
             onPress={() => dismiss()}
             style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
           >
             <Ionicons name="close" size={22} color={colors.onSurface} />
-          </Pressable>
+          </PressableScale>
         </View>
       ) : null}
       {scrollable ? (

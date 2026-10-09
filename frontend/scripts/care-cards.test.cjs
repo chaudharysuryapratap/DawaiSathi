@@ -8,6 +8,7 @@ const ts = require("typescript");
 function render({ fontScale = 1, width = 390, error = null } = {}) {
   const calls = [], states = []; let cursor = 0;
   const mocks = {
+    "@/src/components/ui/PressableScale": { __esModule: true, default: "button" },
     react: { useState: initial => { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], value => { states[i] = value; }]; } },
     "react-native": { Pressable: "button", Text: "text", View: "view", StyleSheet: { create: value => value }, useWindowDimensions: () => ({ width, fontScale }) },
     "expo-router": { useRouter: () => ({ push: route => calls.push(route) }) },
@@ -15,6 +16,7 @@ function render({ fontScale = 1, width = 390, error = null } = {}) {
     "@expo/vector-icons": { Ionicons: "icon" },
     "@/src/components/app-header": { AppHeader: "header" },
     "@/src/components/bottom-sheet": { BottomSheet: "sheet" },
+    "@/src/components/family-reminder-button": { FamilyReminderButton: "reminder" },
     "@/src/components/care-illustration": { CareIllustration: "illustration" },
     "@/src/components/dawai-ui": { ScreenShell: "screen", LoadingState: "loading", ErrorState: "error" },
     "@/src/data-context": { useData: () => ({ loading: false, error, refresh: () => calls.push("refresh") }) },
@@ -41,11 +43,10 @@ test("large text and narrow phones switch to full-width cards without truncation
     assert.equal(nodes(tree).filter(n => n.type === "text").some(n => n.props.numberOfLines), false);
   }
 });
-test("reminder banner explains pending integration and never claims delivery", () => {
+test("reminder previews success without a sheet until delivery integration", async () => {
   const app = render();
-  find(app.tree(), "care-family-reminder").props.onPress();
-  const sheet = nodes(app.tree()).find(n => n.type === "sheet");
-  assert.equal(sheet.props.visible, true);
-  assert.ok(nodes(sheet).some(n => n.props?.children?.includes?.("No reminders have been sent.")));
+  const reminder = nodes(app.tree()).find(n => n.type === "reminder");
+  await assert.doesNotReject(reminder.props.onSend());
+  assert.equal(nodes(app.tree()).some(n => n.type === "sheet"), false);
   assert.deepEqual(app.calls, []);
 });

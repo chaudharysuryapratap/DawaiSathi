@@ -18,6 +18,7 @@ function harness(existing) {
     updateMedicine: async (id, input) => calls.push(["update", id, input]),
   };
   const mocks = {
+    "@/src/components/ui/PressableScale": { __esModule: true, default: "button" },
     react: {
       useMemo: (fn) => fn(),
       useRef(initial) {

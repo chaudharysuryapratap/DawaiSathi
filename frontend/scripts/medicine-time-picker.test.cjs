@@ -10,6 +10,7 @@ function harness(platform, disabled = false) {
   let cursor = 0, dialog;
   const states = [], selected = [];
   const mocks = {
+    "@/src/components/ui/PressableScale": { __esModule: true, default: "button" },
     react: { useState(initial) {
       const index = cursor++;
       if (!(index in states)) states[index] = typeof initial === "function" ? initial() : initial;

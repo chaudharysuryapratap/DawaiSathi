@@ -11,6 +11,7 @@ function harness(component, { owner = true, failDelete = false } = {}) {
   let cursor = 0;
   const group = { id: "family-test", name: "Surya", owner_user_id: "owner" };
   const mocks = {
+    "@/src/components/ui/PressableScale": { __esModule: true, default: "button" },
     "expo-router": { Stack: { Screen: "screen" }, useLocalSearchParams: () => ({}) },
     "react-native-safe-area-context": { useSafeAreaInsets: () => ({ bottom: 0 }) },
     "@/src/components/focus-input": { TextInput: "input" },

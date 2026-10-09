@@ -8,6 +8,8 @@ node_modules/
 .metro-cache/
 dist/
 web-build/
+.settings-build-check/
+.settings-android-check/
 expo-env.d.ts
 
 # Native

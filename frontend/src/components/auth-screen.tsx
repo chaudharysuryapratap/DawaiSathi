@@ -1,9 +1,10 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { useState } from "react";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { TextInput } from "@/src/components/focus-input";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -90,10 +91,10 @@ export function AuthScreen({ initialInvitationCode = "" }: { initialInvitationCo
       <StatusBar style="dark" />
       <LinearGradient colors={[colors.welcomeGradientTop, colors.welcomeGradientMiddle, colors.welcomeGradientBottom]} locations={[0, 0.57, 1]} style={styles.body}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Pressable accessibilityRole="button" disabled={busy} onPress={() => setScreen("welcome")} style={styles.back}>
+        <PressableScale accessibilityRole="button" disabled={busy} onPress={() => setScreen("welcome")} style={styles.back}>
           <MaterialCommunityIcons name="arrow-left" size={22} color={colors.brandPrimary} />
           <Text style={styles.switchText}>Back to welcome</Text>
-        </Pressable>
+        </PressableScale>
         <View style={styles.hero}>
           <View style={styles.badge}>
             <MaterialCommunityIcons name="pill" size={25} color={colors.onSurface} />
@@ -178,7 +179,7 @@ export function AuthScreen({ initialInvitationCode = "" }: { initialInvitationCo
           onPress={() => void submit()}
           disabled={busy || !email.trim() || !password || (isRegister && (!name.trim() || !token.trim()))}
         />
-        <Pressable
+        <PressableScale
           accessibilityRole="button"
           disabled={busy}
           testID="auth-mode-toggle"
@@ -191,7 +192,7 @@ export function AuthScreen({ initialInvitationCode = "" }: { initialInvitationCo
           <Text style={styles.switchText}>
             {isRegister ? "Already have an account? Sign in" : "New to DawaiSathi? Create account"}
           </Text>
-        </Pressable>
+        </PressableScale>
         </View>
         <Text style={styles.footer}>A little care. Every day.</Text>
       </ScrollView>

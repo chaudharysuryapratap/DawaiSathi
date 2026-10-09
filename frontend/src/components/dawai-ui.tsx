@@ -1,9 +1,11 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { makeStyles, useTheme } from "@/src/theme";
+import { TAB_BAR_HEIGHT } from "@/src/tab-bar-metrics";
 
 export function ScreenShell({
   children,
@@ -27,7 +29,7 @@ export function ScreenShell({
         <ScrollView
           contentContainerStyle={[
             styles.content,
-            { paddingTop: header ? 8 : insets.top + 18, paddingBottom: 96 },
+            { paddingTop: header ? 8 : insets.top + 18, paddingBottom: TAB_BAR_HEIGHT + insets.bottom },
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -84,7 +86,7 @@ export function PrimaryButton({
   const styleForVariant = variant === "secondary" ? styles.secondaryButton : variant === "danger" ? styles.dangerButton : styles.primaryButton;
   const textStyle = variant === "secondary" ? styles.secondaryText : variant === "danger" ? styles.dangerText : styles.primaryText;
   return (
-    <Pressable
+    <PressableScale
       testID={testID}
       accessibilityRole="button"
       onPress={onPress}
@@ -93,7 +95,7 @@ export function PrimaryButton({
     >
       {icon ? <Ionicons name={icon} size={18} color={textStyle.color} /> : null}
       <Text style={textStyle}>{label}</Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -125,9 +127,9 @@ export function ErrorState({
       <Ionicons name={icon} size={26} color={styles.errorText.color} />
       <Text style={styles.stateTitle}>{title}</Text>
       <Text style={styles.stateText}>{message}</Text>
-      <Pressable onPress={onRetry} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+      <PressableScale onPress={onRetry} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
         <Text style={styles.secondaryText}>Try again</Text>
-      </Pressable>
+      </PressableScale>
     </View>
   );
 }

@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import PressableScale from "@/src/components/ui/PressableScale";
+import { StyleSheet, Text, View } from "react-native";
 import { makeStyles } from "@/src/theme";
 
 export function DeleteConfirmation({ message, label, busy, error, onCancel, onConfirm }: {
@@ -10,8 +11,8 @@ export function DeleteConfirmation({ message, label, busy, error, onCancel, onCo
     <Text style={styles.message}>{message}</Text>
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
     <View style={styles.actions}>
-      <Pressable accessibilityRole="button" testID="delete-cancel" disabled={busy} onPress={onCancel} style={[styles.button, styles.cancel]}><Text style={styles.cancelText}>Cancel</Text></Pressable>
-      <Pressable accessibilityRole="button" testID="delete-confirm" disabled={busy} onPress={onConfirm} style={[styles.button, styles.confirm, busy && { opacity: 0.6 }]}><Text style={styles.confirmText}>{busy ? "Please wait…" : label}</Text></Pressable>
+      <PressableScale accessibilityRole="button" testID="delete-cancel" disabled={busy} onPress={onCancel} style={[styles.button, styles.cancel]}><Text style={styles.cancelText}>Cancel</Text></PressableScale>
+      <PressableScale accessibilityRole="button" testID="delete-confirm" disabled={busy} onPress={onConfirm} style={[styles.button, styles.confirm, busy && { opacity: 0.6 }]}><Text style={styles.confirmText}>{busy ? "Please wait…" : label}</Text></PressableScale>
     </View>
   </View>;
 }

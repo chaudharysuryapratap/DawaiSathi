@@ -1,3 +1,4 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { Ionicons } from "@expo/vector-icons";
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus, useAudioRecorder } from "expo-audio";
 import * as DocumentPicker from "expo-document-picker";
@@ -153,19 +154,19 @@ export function VoiceNoteField({ value, disabled = false }: { value: ReturnType<
       <Text style={[styles.label, { color: colors.onSurface }]}>Voice note reminder</Text>
       <Text style={{ color: colors.muted, fontSize: 12 }}>Record up to 30 seconds or upload audio up to 5 MB.</Text>
       <View style={styles.row}>
-        <Pressable accessibilityRole="button" disabled={disabled || (value.busy && !recording)} onPress={recording ? stop : record} style={[styles.action, { backgroundColor: colors.brandPrimary }]} testID="voice-note-record"><Ionicons name={recording ? "stop" : "mic-outline"} size={20} color={colors.onBrandPrimary} /><Text style={[styles.actionText, { color: colors.onBrandPrimary }]}>{recording ? "Stop recording" : "Record"}</Text></Pressable>
-        <Pressable accessibilityRole="button" disabled={locked} onPress={upload} style={[styles.action, { backgroundColor: colors.brandPrimary }, locked && styles.disabled]} testID="voice-note-upload"><Ionicons name="cloud-upload-outline" size={20} color={colors.onBrandPrimary} /><Text style={[styles.actionText, { color: colors.onBrandPrimary }]}>Upload</Text></Pressable>
+        <PressableScale accessibilityRole="button" disabled={disabled || (value.busy && !recording)} onPress={recording ? stop : record} style={[styles.action, { backgroundColor: colors.brandPrimary }]} testID="voice-note-record"><Ionicons name={recording ? "stop" : "mic-outline"} size={20} color={colors.onBrandPrimary} /><Text style={[styles.actionText, { color: colors.onBrandPrimary }]}>{recording ? "Stop recording" : "Record"}</Text></PressableScale>
+        <PressableScale accessibilityRole="button" disabled={locked} onPress={upload} style={[styles.action, { backgroundColor: colors.brandPrimary }, locked && styles.disabled]} testID="voice-note-upload"><Ionicons name="cloud-upload-outline" size={20} color={colors.onBrandPrimary} /><Text style={[styles.actionText, { color: colors.onBrandPrimary }]}>Upload</Text></PressableScale>
       </View>
       {recording && <Text accessibilityLiveRegion="polite" style={{ color: colors.brandPrimary }}>Recording… tap Stop when finished.</Text>}
       {note && <>
         <View style={[styles.audio, { backgroundColor: colors.brandSecondary }]} testID="voice-note-preview">
-          <Pressable accessibilityRole="button" accessibilityLabel={status.playing ? "Pause voice note" : "Play voice note"} disabled={locked || !status.isLoaded} onPress={togglePlayback} style={styles.play} testID="voice-note-play"><Ionicons name={status.playing ? "pause" : "play"} size={25} color={colors.onBrandSecondary} /></Pressable>
+          <PressableScale scaleTo={0.88} hitSlop={14} accessibilityRole="button" accessibilityLabel={status.playing ? "Pause voice note" : "Play voice note"} disabled={locked || !status.isLoaded} onPress={togglePlayback} style={styles.play} testID="voice-note-play"><Ionicons name={status.playing ? "pause" : "play"} size={25} color={colors.onBrandSecondary} /></PressableScale>
           <View style={styles.wave} accessibilityLabel="Audio playback progress">
             {Array.from({ length: 36 }, (_, i) => <View key={i} style={{ flex: 1, height: 5 + Math.sin(i * 1.7) ** 2 * (12 + 22 * Math.sin(i / 36 * Math.PI)), borderRadius: 2, backgroundColor: colors.onBrandSecondary, opacity: i / 36 <= progress ? 1 : 0.55 }} />)}
           </View>
           <Text style={[styles.duration, { color: colors.onBrandSecondary }]}>{Math.floor(status.currentTime || 0)}s</Text>
         </View>
-        <View style={styles.row}><Text numberOfLines={1} style={{ flex: 1, color: colors.muted, fontSize: 12 }}>{note.name}</Text><Pressable accessibilityRole="button" disabled={locked} onPress={() => { player.pause(); value.setNote(null); setError(null); }} testID="voice-note-remove" style={styles.remove}><Text style={{ color: colors.error, fontWeight: "700" }}>Remove</Text></Pressable></View>
+        <View style={styles.row}><Text numberOfLines={1} style={{ flex: 1, color: colors.muted, fontSize: 12 }}>{note.name}</Text><PressableScale accessibilityRole="button" disabled={locked} onPress={() => { player.pause(); value.setNote(null); setError(null); }} testID="voice-note-remove" style={styles.remove}><Text style={{ color: colors.error, fontWeight: "700" }}>Remove</Text></PressableScale></View>
       </>}
       {(error || status.error) && <Text accessibilityLiveRegion="polite" style={{ color: colors.error }}>{error || "Could not play this voice note. Try another recording or file."}</Text>}
     </View>}

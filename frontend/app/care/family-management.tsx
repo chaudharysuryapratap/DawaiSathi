@@ -1,7 +1,15 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
+import Animated, {
+  FadeIn,
+  LinearTransition,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -60,6 +68,30 @@ export default function FamilyManagementScreen() {
     [name, setName] = useState(""),
     [code, setCode] = useState(params.inviteCode ?? "");
   const [showInvite, setShowInvite] = useState(false);
+  const [expandedFamily, setExpandedFamily] = useState<string | null>(null);
+  const [pressedFamily, setPressedFamily] = useState<string | null>(null);
+  const cardScale = useSharedValue(1);
+  const cardPressStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: cardScale.value }],
+  }));
+  const [familyOwners, setFamilyOwners] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let current = true;
+    Promise.all(
+      data.familyGroups.map(async (family) => {
+        try {
+          return [family.id, (await fm.summary(family.id)).owner_name] as const;
+        } catch {
+          return [family.id, "Family owner"] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (current) setFamilyOwners(Object.fromEntries(entries));
+    });
+    return () => {
+      current = false;
+    };
+  }, [data.familyGroups]);
   const [preview, setPreview] = useState<JoinPreview | null>(null),
     [invites, setInvites] = useState<Invite[]>([]);
   const [profile, setProfile] = useState<Profile>({
@@ -224,7 +256,7 @@ export default function FamilyManagementScreen() {
     onPress: () => void,
     danger = false,
   ) => (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityLabel={label}
       disabled={busy}
@@ -260,7 +292,7 @@ export default function FamilyManagementScreen() {
       >
         {label}
       </Text>
-    </Pressable>
+    </PressableScale>
   );
   const managementRow = (
     label: string,
@@ -420,13 +452,13 @@ export default function FamilyManagementScreen() {
             page,
           ),
           headerLeft: () => (
-            <Pressable
+            <PressableScale scaleTo={0.88} hitSlop={14}
               accessibilityLabel="Go back"
               style={{ padding: 10 }}
               onPress={() => (page === "home" ? router.back() : back())}
             >
               <Ionicons name="arrow-back" size={24} color={colors.onSurface} />
-            </Pressable>
+            </PressableScale>
           ),
         }}
       />
@@ -494,114 +526,305 @@ export default function FamilyManagementScreen() {
                 {copy("Manage your families, members and invitations.")}
               </View>
             </View>
-            {group ? (
-              <LinearGradient
-                colors={["#ecfaf6", "#effaf7"]}
-                style={{ padding: 14, borderRadius: 20, gap: 12 }}
-              >
-                <Text
-                  style={{
-                    fontSize: 16,
-                    fontWeight: "700",
-                    color: colors.muted,
-                  }}
-                >
-                  Current family
-                </Text>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    gap: 12,
-                    alignItems: "center",
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 72,
-                      height: 72,
-                      borderRadius: 36,
-                      backgroundColor: colors.brandTertiary,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Ionicons
-                      name="people"
-                      size={43}
-                      color={colors.brandPrimary}
-                    />
-                  </View>
-                  <View style={{ flex: 1, gap: 5 }}>
-                    {title(group.name)}
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 7,
-                      }}
-                    >
-                      <Ionicons
-                        name="people-outline"
-                        size={17}
-                        color={colors.muted}
-                      />
-                      {copy(memberCount)}
-                    </View>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 7,
-                      }}
-                    >
-                      <MaterialCommunityIcons
-                        name="crown-outline"
-                        size={17}
-                        color={colors.muted}
-                      />
-                      <Text
-                        style={{ flex: 1, color: colors.muted, fontSize: 14 }}
+            {data.familyGroups.length ? (
+              <View testID="family-card-stack">
+                {[...data.familyGroups]
+                  .sort(
+                    (a, b) =>
+                      Number(b.id === groupId) - Number(a.id === groupId),
+                  )
+                  .map((family, index, families) => {
+                    const active = family.id === groupId,
+                      expanded = expandedFamily === family.id;
+                    const colorIndex = data.familyGroups.findIndex(
+                      (item) => item.id === family.id,
+                    );
+                    const palette =
+                      colorIndex === 0
+                        ? {
+                            bg: ["#f4fcfa", "#e3f7f2"] as const,
+                            badge: "#def5ef",
+                            ink: colors.brandPrimary,
+                          }
+                        : colorIndex % 2
+                          ? {
+                              bg: ["#e7f2ff", "#cce5ff"] as const,
+                              badge: "#e8f5ff",
+                              ink: "#007ddd",
+                            }
+                          : {
+                              bg: ["#fff9f0", "#fae9d4"] as const,
+                              badge: "#fff7ea",
+                              ink: "#bc7a32",
+                            };
+                    const count =
+                      family.member_count ?? (active ? data.members.length : 0);
+                    const peek = !active && !expanded;
+                    return (
+                      <Animated.View
+                        key={family.id}
+                        layout={LinearTransition.duration(240)}
+                        style={[
+                          { zIndex: families.length - index },
+                          pressedFamily === family.id ? cardPressStyle : undefined,
+                        ]}
                       >
-                        Owner: {ownerName}
-                      </Text>
-                    </View>
-                  </View>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="View family members"
-                    onPress={() => open("members")}
-                    style={{ padding: 6 }}
-                  >
-                    <Ionicons
-                      name="chevron-forward"
-                      size={22}
-                      color={colors.muted}
-                    />
-                  </Pressable>
-                </View>
-                <View
-                  style={{
-                    flexDirection: roomyText ? "column" : "row",
-                    gap: 7,
-                  }}
-                >
-                  {panelButton("Switch family", "swap-horizontal", () =>
-                    open("switch"),
-                  )}
-                  {owner &&
-                    panelButton("Rename family", "pencil-outline", () => {
-                      setName(group.name);
-                      setConfirm("rename");
-                    })}
-                  {owner &&
-                    panelButton(
-                      "Delete family",
-                      "trash-outline",
-                      () => setConfirm("delete"),
-                      true,
-                    )}
-                </View>
-              </LinearGradient>
+                        <LinearGradient
+                          key={family.id}
+                          colors={palette.bg}
+                          style={{
+                            borderRadius: 22,
+                            padding: peek ? 0 : 14,
+                            gap: 14,
+                            marginHorizontal: roomyText
+                              ? 0
+                              : Math.min(index * 9, 18),
+                            marginTop: index
+                              ? roomyText
+                                ? 10
+                                : peek
+                                  ? -15
+                                  : -9
+                              : 0,
+                            zIndex: families.length - index,
+                            paddingTop: peek
+                              ? 0
+                              : index && !roomyText
+                                ? 23
+                                : 14,
+                            overflow: "hidden",
+                            boxShadow: "0 5px 18px rgba(31,68,78,0.07)",
+                          }}
+                        >
+                          <View
+                            pointerEvents="none"
+                            style={{
+                              position: "absolute",
+                              width: 230,
+                              height: 130,
+                              right: -45,
+                              bottom: -65,
+                              borderRadius: 90,
+                              transform: [{ rotate: "-20deg" }],
+                              backgroundColor: palette.badge,
+                              opacity: 0.5,
+                            }}
+                          />
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={`Expand ${family.name}`}
+                            accessibilityState={{ expanded }}
+                            disabled={busy}
+                            onPressIn={() => {
+                              setPressedFamily(family.id);
+                              cardScale.value = withTiming(0.985, {
+                                duration: 100,
+                              });
+                            }}
+                            onPressOut={() => {
+                              cardScale.value = withTiming(1, {
+                                duration: 160,
+                              });
+                            }}
+                            onPress={() => {
+                              if (!expanded) setExpandedFamily(family.id);
+                              else {
+                                if (!active)
+                                  data.setActiveFamilyGroup(family.id);
+                                setExpandedFamily(null);
+                              }
+                            }}
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 12,
+                              minHeight: peek ? 44 : 112,
+                            }}
+                          >
+                            {!peek && (
+                              <Animated.View
+                                entering={FadeIn.duration(180)}
+                                style={{
+                                  flex: 1,
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 12,
+                                }}
+                              >
+                                <View
+                                  style={{
+                                    width: active ? 64 : 54,
+                                    height: active ? 64 : 54,
+                                    borderRadius: 40,
+                                    backgroundColor: palette.badge,
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
+                                >
+                                  <Ionicons
+                                    name="people"
+                                    size={active ? 36 : 31}
+                                    color={palette.ink}
+                                  />
+                                </View>
+                                <View style={{ flex: 1, gap: 7 }}>
+                                  <View
+                                    style={{
+                                      flexDirection: "column",
+                                      alignItems: "flex-start",
+                                      flexWrap: "wrap",
+                                      gap: 6,
+                                    }}
+                                  >
+                                    <Text
+                                      style={{
+                                        flexGrow: 1,
+                                        color: colors.onSurface,
+                                        fontSize: 18,
+                                        fontWeight: "800",
+                                      }}
+                                    >
+                                      {/\bfamily\s*$/i.test(family.name)
+                                        ? family.name
+                                        : `${family.name}’s Family`}
+                                    </Text>
+                                    {active && (
+                                      <View
+                                        style={{
+                                          flexDirection: "row",
+                                          alignItems: "center",
+                                          gap: 4,
+                                          padding: 6,
+                                          borderRadius: 999,
+                                          borderWidth: 1,
+                                          borderColor: "#ccece4",
+                                          backgroundColor: "#f0fcf8",
+                                        }}
+                                      >
+                                        <Ionicons
+                                          name="checkmark-circle"
+                                          size={14}
+                                          color={palette.ink}
+                                        />
+                                        <Text
+                                          style={{
+                                            color: palette.ink,
+                                            fontSize: 10,
+                                            fontWeight: "700",
+                                          }}
+                                        >
+                                          Current family
+                                        </Text>
+                                      </View>
+                                    )}
+                                  </View>
+                                  <View
+                                    style={{
+                                      flexDirection: "row",
+                                      alignItems: "center",
+                                      gap: 6,
+                                    }}
+                                  >
+                                    <Ionicons
+                                      name="people-outline"
+                                      size={16}
+                                      color={colors.muted}
+                                    />
+                                    {copy(
+                                      `${count} ${count === 1 ? "member" : "members"}`,
+                                    )}
+                                  </View>
+                                  {(active || expanded) && (
+                                    <View
+                                      style={{
+                                        flexDirection: "row",
+                                        alignItems: "center",
+                                        gap: 6,
+                                      }}
+                                    >
+                                      <MaterialCommunityIcons
+                                        name="crown-outline"
+                                        size={17}
+                                        color={colors.muted}
+                                      />
+                                      <Text
+                                        style={{
+                                          flex: 1,
+                                          color: colors.muted,
+                                          fontSize: 12,
+                                        }}
+                                      >
+                                        Owner:{" "}
+                                        {familyOwners[family.id] ??
+                                          (active ? ownerName : "Family owner")}
+                                      </Text>
+                                    </View>
+                                  )}
+                                </View>
+                                {active && (
+                                  <Pressable
+                                    accessibilityRole="button"
+                                    accessibilityLabel="View current family members"
+                                    onPress={(event) => {
+                                      event.stopPropagation();
+                                      open("members");
+                                    }}
+                                    style={{
+                                      minWidth: 44,
+                                      minHeight: 44,
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                    }}
+                                  >
+                                    <Ionicons
+                                      name="chevron-forward"
+                                      size={22}
+                                      color={colors.muted}
+                                    />
+                                  </Pressable>
+                                )}
+                              </Animated.View>
+                            )}
+                          </Pressable>
+                          {expanded && (
+                            <View
+                              style={{
+                                flexDirection: roomyText ? "column" : "row",
+                                gap: 7,
+                              }}
+                            >
+                              {active ? (
+                                <>
+                                  {panelButton(
+                                    "Family members",
+                                    "people-outline",
+                                    () => open("members"),
+                                  )}
+                                  {owner &&
+                                    panelButton(
+                                      "Rename family",
+                                      "pencil-outline",
+                                      () => {
+                                        setName(group!.name);
+                                        setConfirm("rename");
+                                      },
+                                    )}
+                                  {owner &&
+                                    panelButton(
+                                      "Delete family",
+                                      "trash-outline",
+                                      () => setConfirm("delete"),
+                                      true,
+                                    )}
+                                </>
+                              ) : null}
+                            </View>
+                          )}
+                        </LinearGradient>
+                      </Animated.View>
+                    );
+                  })}
+              </View>
             ) : (
               copy("Choose or create a family to get started.")
             )}
@@ -666,7 +889,7 @@ export default function FamilyManagementScreen() {
             {title("Switch family")}
             {copy("Choose the family you want to access.")}
             {data.familyGroups.map((family) => (
-              <Pressable
+              <PressableScale scaleTo={0.88} hitSlop={14}
                 key={family.id}
                 accessibilityRole="button"
                 accessibilityState={{ selected: groupId === family.id }}
@@ -687,7 +910,7 @@ export default function FamilyManagementScreen() {
               >
                 {title(family.name)}
                 {copy(`${family.member_count} members`)}
-              </Pressable>
+              </PressableScale>
             ))}
           </>
         )}
@@ -860,7 +1083,7 @@ export default function FamilyManagementScreen() {
             {title("Role")}
             <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
               {(["member", "care_taker"] as const).map((role) => (
-                <Pressable
+                <PressableScale
                   key={role}
                   onPress={() => setProfile({ ...profile, role })}
                   style={{
@@ -876,7 +1099,7 @@ export default function FamilyManagementScreen() {
                   <Text style={{ color: colors.onSurface }}>
                     {role === "care_taker" ? "Caretaker" : "Member"}
                   </Text>
-                </Pressable>
+                </PressableScale>
               ))}
             </View>
             {copy(

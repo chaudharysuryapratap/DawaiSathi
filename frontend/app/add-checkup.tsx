@@ -1,7 +1,8 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { TextInput } from "@/src/components/focus-input";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -122,14 +123,14 @@ function AddCheckupForm({ mode }: { mode: CheckupFormMode }) {
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Pressable
+        <PressableScale scaleTo={0.88} hitSlop={14}
           accessibilityLabel="Close"
           onPress={() => router.back()}
           style={({ pressed }) => [styles.close, pressed && styles.pressed]}
           testID="add-checkup-close"
         >
           <Ionicons name="close" size={22} color={colors.onSurface} />
-        </Pressable>
+        </PressableScale>
         <Text style={styles.headerTitle}>{existing ? "Edit checkup" : "Add checkup"}</Text>
         <View style={styles.close} />
       </View>
@@ -142,7 +143,7 @@ function AddCheckupForm({ mode }: { mode: CheckupFormMode }) {
           <Text style={styles.label}>Who is this checkup for?</Text>
           <View style={styles.chips}>
             {members.map((member) => (
-              <Pressable
+              <PressableScale
                 key={member.id}
                 testID={`checkup-member-${member.id}`}
                 onPress={() => setMemberId(member.id)}
@@ -150,15 +151,15 @@ function AddCheckupForm({ mode }: { mode: CheckupFormMode }) {
               >
                 <View style={[styles.chipDot, { backgroundColor: member.color }]} />
                 <Text style={[styles.chipText, memberId === member.id && styles.chipTextActive]}>{member.name}</Text>
-              </Pressable>
+              </PressableScale>
             ))}
-            <Pressable
+            <PressableScale
               testID="checkup-member-none"
               onPress={() => setMemberId(null)}
               style={({ pressed }) => [styles.chip, memberId === null && styles.chipActive, pressed && styles.pressed]}
             >
               <Text style={[styles.chipText, memberId === null && styles.chipTextActive]}>Family</Text>
-            </Pressable>
+            </PressableScale>
           </View>
         </View>
 

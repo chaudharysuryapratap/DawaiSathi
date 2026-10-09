@@ -1,7 +1,8 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { BottomSheet } from "@/src/components/bottom-sheet";
 import { PrimaryButton } from "@/src/components/dawai-ui";
@@ -99,7 +100,7 @@ export function EyeDropDetailSheet({ visible, onClose, protocol }: Props) {
         </View>
       ) : null}
       <View style={styles.actions}>
-      <Pressable
+      <PressableScale
         testID="protocol-modify"
         accessibilityRole="button"
         onPress={() => { onClose(); router.push({ pathname: "/add-eye-drop-protocol", params: { id: protocol.protocol_id } }); }}
@@ -108,8 +109,8 @@ export function EyeDropDetailSheet({ visible, onClose, protocol }: Props) {
       >
         <Ionicons name="pencil" size={16} color={colors.brandPrimary} />
         <Text style={styles.modifyText}>Modify protocol</Text>
-      </Pressable>
-      <Pressable
+      </PressableScale>
+      <PressableScale
         testID="protocol-delete"
         onPress={remove}
         disabled={busy}
@@ -117,7 +118,7 @@ export function EyeDropDetailSheet({ visible, onClose, protocol }: Props) {
       >
         <Ionicons name="trash-outline" size={16} color={colors.error} />
         <Text style={styles.dangerText}>Remove protocol</Text>
-      </Pressable>
+      </PressableScale>
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </>
@@ -167,7 +168,7 @@ export function EyeDropDetailSheet({ visible, onClose, protocol }: Props) {
                   </Text>
                 </View>
                 {takenOk ? (
-                  <Pressable
+                  <PressableScale
                     testID={`protocol-step-undo-${view.order}`}
                     onPress={() => undo(view.order)}
                     style={({ pressed }) => [styles.undoButton, pressed && styles.pressed]}
@@ -175,7 +176,7 @@ export function EyeDropDetailSheet({ visible, onClose, protocol }: Props) {
                   >
                     <Ionicons name="arrow-undo-outline" size={14} color={colors.brandPrimary} />
                     <Text style={styles.undoText}>Undo</Text>
-                  </Pressable>
+                  </PressableScale>
                 ) : (
                   <StatusPill status={view.status} testID={`protocol-step-status-${view.order}`} />
                 )}

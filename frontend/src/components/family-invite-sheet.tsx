@@ -1,8 +1,9 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import * as Linking from "expo-linking";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { TextInput } from "@/src/components/focus-input";
 import QRCode from "react-native-qrcode-svg";
 import { api } from "@/src/api";
@@ -55,19 +56,19 @@ export function FamilyInviteSheet({ group, onClose }: { group: FamilyGroup | nul
   return <BottomSheet visible={!!group} onClose={close} title="Invite someone to join" testID="family-invite-sheet" appearance="family" headerAccessory={badge}>
     <Text style={styles.description}>{"Share this code or QR with people you trust to join this family's health records"}</Text>
     <View style={styles.email}><Ionicons name="mail-outline" size={22} color={colors.muted} /><TextInput value={email} onChangeText={setEmail} editable={!busy} accessibilityLabel="Member email" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} placeholder="Enter member email" placeholderTextColor={colors.muted} style={styles.input} testID="family-invite-email" /></View>
-    <Pressable accessibilityRole="button" disabled={busy} onPress={sendEmail} testID="family-invite-send" style={[styles.send, busy && { opacity: 0.6 }]}><Text style={styles.sendLabel}>{busy ? "Preparing…" : "Send Email Invite"}</Text><Ionicons name="arrow-forward" size={24} color={colors.onBrandPrimary} /></Pressable>
+    <PressableScale accessibilityRole="button" disabled={busy} onPress={sendEmail} testID="family-invite-send" style={[styles.send, busy && { opacity: 0.6 }]}><Text style={styles.sendLabel}>{busy ? "Preparing…" : "Send Email Invite"}</Text><Ionicons name="arrow-forward" size={24} color={colors.onBrandPrimary} /></PressableScale>
     {message && <Text accessibilityLiveRegion="polite" style={styles.message}>{message}</Text>}
     {error && <Text accessibilityLiveRegion="polite" style={styles.error}>{error}</Text>}
-    {invitation && <View style={styles.fallback}><Text style={styles.caption}>Email invitation token</Text><Text selectable style={styles.token}>{invitation}</Text><Pressable accessibilityRole="button" onPress={() => copy(invitation)} style={styles.copy}><Text style={styles.copyLabel}>Copy invitation</Text></Pressable></View>}
+    {invitation && <View style={styles.fallback}><Text style={styles.caption}>Email invitation token</Text><Text selectable style={styles.token}>{invitation}</Text><PressableScale accessibilityRole="button" onPress={() => copy(invitation)} style={styles.copy}><Text style={styles.copyLabel}>Copy invitation</Text></PressableScale></View>}
     <View style={styles.divider} />
     <View style={styles.ticket} testID="family-code-ticket">
       <View style={styles.codeRow}>
         <View style={{ alignSelf: "stretch" }}><Text style={styles.caption}>FAMILY CODE</Text><Text selectable numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={styles.code} testID="family-code-value">{code ? displayFamilyCode(code) : "Loading…"}</Text></View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Copy family code" disabled={!code} onPress={() => code && copy(displayFamilyCode(code))} style={styles.copy} testID="family-code-copy"><Ionicons name="copy-outline" size={20} color={colors.brandPrimary} /><Text style={styles.copyLabel}>Copy</Text></Pressable>
+        <PressableScale accessibilityRole="button" accessibilityLabel="Copy family code" disabled={!code} onPress={() => code && copy(displayFamilyCode(code))} style={styles.copy} testID="family-code-copy"><Ionicons name="copy-outline" size={20} color={colors.brandPrimary} /><Text style={styles.copyLabel}>Copy</Text></PressableScale>
       </View>
       <View style={styles.perforation}><View style={styles.notchLeft} /><View style={styles.notchRight} /></View>
       <View style={[styles.qrRow, stacked && { flexDirection: "column" }]}>
-        <View style={styles.qr}>{code ? <QRCode value={familyJoinUrl(code)} size={112} quietZone={8} /> : <Pressable accessibilityRole="button" onPress={() => setLoadVersion(v => v + 1)} style={styles.retry}><Text style={styles.copyLabel}>Retry</Text></Pressable>}</View>
+        <View style={styles.qr}>{code ? <QRCode value={familyJoinUrl(code)} size={112} quietZone={8} /> : <PressableScale accessibilityRole="button" onPress={() => setLoadVersion(v => v + 1)} style={styles.retry}><Text style={styles.copyLabel}>Retry</Text></PressableScale>}</View>
         <Text style={styles.qrText}>Scan to open DawaiSathi and join this family, or enter the family code in “Join a family”.</Text>
       </View>
     </View>

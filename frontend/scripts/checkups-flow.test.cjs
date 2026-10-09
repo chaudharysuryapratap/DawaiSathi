@@ -8,6 +8,7 @@ function harness(params = {}) {
   const future = new Date(Date.now() + 86400000).toISOString(), past = new Date(Date.now() - 86400000).toISOString();
   const records = [{ id: "past", title: "Past visit", scheduled_at: past }, { id: "later", title: "Later visit", scheduled_at: new Date(Date.now() + 172800000).toISOString() }, { id: "next", title: "Eye checkup", scheduled_at: future }].map(item => ({ doctor: "Dr. Sharma", location: "City Hospital", member_id: "m", notes: "Private notes", ...item }));
   const mocks = {
+    "@/src/components/ui/PressableScale": { __esModule: true, default: "button" },
     "@/src/checkup-schedule": schedule.exports,
     "react-native-svg": { __esModule: true, default: "svg", Circle: "circle", Line: "line", Rect: "rect" },
     react: { useState(initial) { const i = cursor++; if (!(i in states)) states[i] = typeof initial === "function" ? initial() : initial; return [states[i], value => { states[i] = typeof value === "function" ? value(states[i]) : value; }]; }, useEffect() {} },

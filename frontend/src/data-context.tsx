@@ -83,6 +83,8 @@ const DataContext = createContext<DataContextValue | null>(null);
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const loadGeneration = useRef(0);
+  const doseSyncGeneration = useRef(0);
+  const selectionGeneration = useRef(0);
   const [familyGroups, setFamilyGroups] = useState<FamilyGroup[]>([]);
   const [activeFamilyGroupId, setActiveFamilyGroupIdState] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
@@ -102,11 +104,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   const setActiveMember = useCallback((id: string | null) => {
+    ++selectionGeneration.current;
+    ++doseSyncGeneration.current;
     setActiveMemberIdState(id);
     void storage.setItem(ACTIVE_MEMBER_KEY, id);
   }, []);
 
   const setActiveFamilyGroup = useCallback((id: string | null) => {
+    ++selectionGeneration.current;
+    ++doseSyncGeneration.current;
     setActiveFamilyGroupIdState(id);
     setLoading(true);
     void storage.setItem(ACTIVE_FAMILY_GROUP_KEY, id);
@@ -272,6 +278,31 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [refresh],
   );
 
+  // Dose writes already update Today optimistically. Reconcile only related
+  // data in the background: never toggle the page loader or overwrite another
+  // dose's optimistic state with an older /today response.
+  const syncDoseData = useCallback(async () => {
+    if (!activeFamilyGroupId) return;
+    const generation = ++doseSyncGeneration.current;
+    const groupGeneration = loadGeneration.current;
+    try {
+      const [historyData, missedData, medicineData, attentionData] = await Promise.all([
+        api.history({ memberId: activeMemberId, familyGroupId: activeFamilyGroupId }),
+        api.missedDoseHistory(activeMemberId, activeFamilyGroupId),
+        api.medicines(undefined, true, activeFamilyGroupId),
+        api.attention(activeFamilyGroupId),
+      ]);
+      if (generation !== doseSyncGeneration.current || groupGeneration !== loadGeneration.current) return;
+      setHistory(historyData);
+      setMissedDoseHistory(missedData);
+      setMedicines(medicineData);
+      setAttention(attentionData.items);
+    } catch {
+      // The write succeeded. Keep its confirmed UI state; a later refresh can
+      // retry secondary data without turning a successful save into a failure.
+    }
+  }, [activeFamilyGroupId, activeMemberId]);
+
   const value = useMemo<DataContextValue>(() => {
     const activeFamilyGroup = familyGroups.find((group) => group.id === activeFamilyGroupId) ?? null;
     const activeMember = members.find((member) => member.id === activeMemberId) ?? null;
@@ -348,12 +379,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         await runAndRefresh(() => api.refillMedicine(id, quantity));
       },
       logDose: async (id, time) => {
+        const selection = selectionGeneration.current;
         const previous = todayDoses.find(
           (dose) => dose.medicine_id === id && dose.time === time,
         );
 
         if (!previous) {
-          await runAndRefresh(() => api.logDose(id, time));
+          await api.logDose(id, time);
+          if (selection === selectionGeneration.current) void syncDoseData();
           return;
         }
 
@@ -386,7 +419,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             ),
           );
 
-          await refresh();
+          if (selection === selectionGeneration.current) void syncDoseData();
         } catch (requestError) {
           setTodayDoses((current) =>
             current.map((dose) =>
@@ -404,12 +437,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }
       },
       undoDose: async (id, time, date) => {
+        const selection = selectionGeneration.current;
         const previous = todayDoses.find(
           (dose) => dose.medicine_id === id && dose.time === time,
         );
 
         if (!previous) {
-          await runAndRefresh(() => api.undoDose(id, time, date));
+          await api.undoDose(id, time, date);
+          if (selection === selectionGeneration.current) void syncDoseData();
           return;
         }
 
@@ -424,7 +459,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         try {
           await api.undoDose(id, time, date);
 
-          await refresh();
+          if (selection === selectionGeneration.current) void syncDoseData();
         } catch (requestError) {
           setTodayDoses((current) =>
             current.map((dose) =>
@@ -496,6 +531,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     error,
     refresh,
     runAndRefresh,
+    syncDoseData,
   ]);
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

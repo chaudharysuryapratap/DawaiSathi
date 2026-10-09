@@ -1,9 +1,10 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useState } from "react";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { TextInput } from "@/src/components/focus-input";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -59,10 +60,10 @@ export function AuthWelcome({ google, onGoogle, onEmail, onBack }: Props) {
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 36, paddingBottom: insets.bottom + 24 }]}>
           <View style={styles.content}>
             {google ? (
-              <Pressable accessibilityRole="button" accessibilityLabel="Back to welcome" onPress={onBack} style={styles.back}>
+              <PressableScale accessibilityRole="button" accessibilityLabel="Back to welcome" onPress={onBack} style={styles.back}>
                 <MaterialCommunityIcons name="arrow-left" size={22} color={colors.onSurface} />
                 <Text style={styles.link}>Back</Text>
-              </Pressable>
+              </PressableScale>
             ) : null}
             <View style={styles.badge}>
               <MaterialCommunityIcons name="pill" size={25} color={colors.onSurface} />
@@ -101,7 +102,7 @@ export function AuthWelcome({ google, onGoogle, onEmail, onBack }: Props) {
                   {error ? <Text accessibilityLiveRegion="assertive" style={styles.error}>{error}</Text> : null}
                 </>
               ) : (
-              <Pressable
+              <PressableScale
                 accessibilityRole="button"
                 testID="auth-google-button"
                 onPress={onGoogle}
@@ -109,12 +110,12 @@ export function AuthWelcome({ google, onGoogle, onEmail, onBack }: Props) {
               >
                 <Image source={require("../../assets/images/google-mark.svg")} style={styles.googleMark} />
                 <Text style={styles.googleText}>Continue with Google</Text>
-              </Pressable>
+              </PressableScale>
               )}
-              <Pressable disabled={busy} accessibilityRole="button" testID="auth-email-button" onPress={onEmail} style={styles.emailButton}>
+              <PressableScale disabled={busy} accessibilityRole="button" testID="auth-email-button" onPress={onEmail} style={styles.emailButton}>
                 <MaterialCommunityIcons name="email-outline" size={21} color={colors.brandPrimary} />
                 <Text style={styles.link}>Continue with email</Text>
-              </Pressable>
+              </PressableScale>
             </View>
             <Text style={styles.footer}>A little care. Every day.</Text>
           </View>

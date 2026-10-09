@@ -65,6 +65,7 @@ chainlit.md
 agenthub/agents/youtube/db
 /backend/data/medicine-images/
 /backend/data/voice-notes/
+/backend/data/prescriptions/
 
 # Archive files and large assets
 **/*.zip

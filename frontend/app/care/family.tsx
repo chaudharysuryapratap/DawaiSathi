@@ -1,7 +1,8 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { TextInput } from "@/src/components/focus-input";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -112,24 +113,24 @@ export default function FamilyScreen() {
           </View>
           {renameId === "family-group" ? (
             <View style={styles.rowActions}>
-              <Pressable
+              <PressableScale scaleTo={0.88} hitSlop={14}
                 onPress={submitRename}
                 disabled={busy}
                 style={({ pressed }) => [styles.mini, pressed && styles.pressed]}
                 testID="family-group-save"
               >
                 <Ionicons name="checkmark" size={16} color={colors.brandPrimary} />
-              </Pressable>
-              <Pressable
+              </PressableScale>
+              <PressableScale scaleTo={0.88} hitSlop={14}
                 onPress={() => { setRenameId(null); setRenameValue(""); }}
                 style={({ pressed }) => [styles.mini, pressed && styles.pressed]}
                 testID="family-group-cancel"
               >
                 <Ionicons name="close" size={16} color={colors.onSurfaceSecondary} />
-              </Pressable>
+              </PressableScale>
             </View>
           ) : (
-            <Pressable
+            <PressableScale scaleTo={0.88} hitSlop={14}
               onPress={() => {
                 if (!activeFamilyGroup) return;
                 setRenameId("family-group");
@@ -139,7 +140,7 @@ export default function FamilyScreen() {
               testID="family-group-rename"
             >
               <Ionicons name="pencil" size={16} color={colors.onSurfaceSecondary} />
-            </Pressable>
+            </PressableScale>
           )}
         </View>
 
@@ -169,25 +170,25 @@ export default function FamilyScreen() {
                 </View>
                 {editing ? (
                   <View style={styles.rowActions}>
-                    <Pressable onPress={submitRename} style={({ pressed }) => [styles.mini, pressed && styles.pressed]} testID={`family-save-${member.id}`}>
+                    <PressableScale scaleTo={0.88} hitSlop={14} onPress={submitRename} style={({ pressed }) => [styles.mini, pressed && styles.pressed]} testID={`family-save-${member.id}`}>
                       <Ionicons name="checkmark" size={16} color={colors.brandPrimary} />
-                    </Pressable>
-                    <Pressable onPress={() => { setRenameId(null); setRenameValue(""); }} style={({ pressed }) => [styles.mini, pressed && styles.pressed]}>
+                    </PressableScale>
+                    <PressableScale scaleTo={0.88} hitSlop={14} onPress={() => { setRenameId(null); setRenameValue(""); }} style={({ pressed }) => [styles.mini, pressed && styles.pressed]}>
                       <Ionicons name="close" size={16} color={colors.onSurfaceSecondary} />
-                    </Pressable>
+                    </PressableScale>
                   </View>
                 ) : (
                   <View style={styles.rowActions}>
-                    <Pressable onPress={() => setActiveMember(member.id)} style={({ pressed }) => [styles.mini, pressed && styles.pressed]} testID={`family-activate-${member.id}`}>
+                    <PressableScale scaleTo={0.88} hitSlop={14} onPress={() => setActiveMember(member.id)} style={({ pressed }) => [styles.mini, pressed && styles.pressed]} testID={`family-activate-${member.id}`}>
                       <Ionicons name="person-circle-outline" size={16} color={colors.brandPrimary} />
-                    </Pressable>
-                    <Pressable onPress={() => { setRenameId(member.id); setRenameValue(member.name); }} style={({ pressed }) => [styles.mini, pressed && styles.pressed]} testID={`family-edit-${member.id}`}>
+                    </PressableScale>
+                    <PressableScale scaleTo={0.88} hitSlop={14} onPress={() => { setRenameId(member.id); setRenameValue(member.name); }} style={({ pressed }) => [styles.mini, pressed && styles.pressed]} testID={`family-edit-${member.id}`}>
                       <Ionicons name="pencil" size={16} color={colors.onSurfaceSecondary} />
-                    </Pressable>
+                    </PressableScale>
                     {!member.is_primary && activeFamilyGroup?.owner_user_id === user?.id ? (
-                      <Pressable disabled={busy} onPress={() => { setError(null); setPendingRemove(member.id); }} style={({ pressed }) => [styles.mini, pressed && styles.pressed]} testID={`family-remove-${member.id}`}>
+                      <PressableScale scaleTo={0.88} hitSlop={14} disabled={busy} onPress={() => { setError(null); setPendingRemove(member.id); }} style={({ pressed }) => [styles.mini, pressed && styles.pressed]} testID={`family-remove-${member.id}`}>
                         <Ionicons name="trash-outline" size={16} color={colors.error} />
-                      </Pressable>
+                      </PressableScale>
                     ) : null}
                   </View>
                 )}

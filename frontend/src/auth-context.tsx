@@ -30,6 +30,7 @@ type AuthState = {
   }) => Promise<void>;
   logout: () => Promise<void>;
   retry: () => void;
+  updateProfile: (input: { name?: string; email?: string }) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -190,9 +191,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setRestoreGeneration((generation) => generation + 1);
   }, []);
 
+  const updateProfile = useCallback(async (input: { name?: string; email?: string }) => {
+    setUser(await api.updateAccount(input));
+  }, []);
   const value = useMemo(
-    () => ({ status, user, error, login, googleLogin, register, logout, retry }),
-    [status, user, error, login, googleLogin, register, logout, retry],
+    () => ({ status, user, error, login, googleLogin, register, logout, retry, updateProfile }),
+    [status, user, error, login, googleLogin, register, logout, retry, updateProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

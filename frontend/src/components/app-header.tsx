@@ -1,9 +1,10 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { AddSheet } from "@/src/components/add-sheet";
-import { AttentionCenter } from "@/src/components/attention-center";
+import { useRouter } from "expo-router";
 import { FamilyGroupSelector } from "@/src/components/family-group-selector";
 import { MemberSelector } from "@/src/components/member-selector";
 import { useData } from "@/src/data-context";
@@ -13,7 +14,7 @@ export function AppHeader({ testID }: { testID?: string }) {
   const { colors } = useTheme();
   const styles = useStyles();
   const { attention } = useData();
-  const [showAttention, setShowAttention] = useState(false);
+  const router = useRouter();
   const [showAdd, setShowAdd] = useState(false);
   const count = attention.length;
   return (
@@ -21,10 +22,11 @@ export function AppHeader({ testID }: { testID?: string }) {
       <View style={styles.brandRow}>
         <FamilyGroupSelector />
         <View style={styles.actions}>
-          <Pressable
+          <PressableScale
+            scaleTo={0.88}
             testID="attention-button"
-            accessibilityLabel={`Attention center${count ? `, ${count} items` : ""}`}
-            onPress={() => setShowAttention(true)}
+            accessibilityLabel={`Inbox${count ? `, ${count} alerts` : ""}`}
+            onPress={() => router.push("/inbox")}
             style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
           >
             <Ionicons name="notifications-outline" size={22} color={colors.onSurface} />
@@ -33,21 +35,20 @@ export function AppHeader({ testID }: { testID?: string }) {
                 <Text style={styles.badgeText}>{count > 9 ? "9+" : count}</Text>
               </View>
             ) : null}
-          </Pressable>
-          <Pressable
+          </PressableScale>
+          <PressableScale scaleTo={0.88} hitSlop={14}
             testID="global-add-button"
             accessibilityLabel="Add"
             onPress={() => setShowAdd(true)}
             style={({ pressed }) => [styles.plusButton, pressed && styles.pressed]}
           >
             <Ionicons name="add" size={24} color={colors.onBrandPrimary} />
-          </Pressable>
+          </PressableScale>
         </View>
       </View>
       <View style={styles.memberRow}>
         <MemberSelector />
       </View>
-      <AttentionCenter visible={showAttention} onClose={() => setShowAttention(false)} />
       <AddSheet visible={showAdd} onClose={() => setShowAdd(false)} />
     </View>
   );

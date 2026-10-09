@@ -1,7 +1,8 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { HistoryDateDial, localDayKey } from "@/src/components/history-date-dial";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 
 import { ErrorState, LoadingState, ScreenShell } from "@/src/components/dawai-ui";
@@ -96,7 +97,7 @@ export default function HistoryScreen() {
   const { colors } = useTheme();
   const styles = useStyles();
   const {
-    history,
+    history: doseHistory,
     protocolHistory,
     missedDoseHistory,
     medicines,
@@ -109,6 +110,7 @@ export default function HistoryScreen() {
     error,
     refresh,
   } = useData();
+  const history = useMemo(() => doseHistory.filter(entry => entry.status !== "undone"), [doseHistory]);
 
   const [medicineFilter, setMedicineFilter] = useState<string | "all">("all");
   const [range, setRange] = useState<Range>("7");
@@ -197,6 +199,7 @@ export default function HistoryScreen() {
         <ErrorState message={error} onRetry={refresh} />
       ) : (
         <>
+          <Text style={styles.title}>History</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow} testID="history-member-filter">
             <FilterPill
               label={`All Family (${members.length})`}
@@ -218,18 +221,22 @@ export default function HistoryScreen() {
 
           <View style={styles.adherenceCard} testID="history-adherence">
             <View style={styles.summaryHeading}>
-              <View style={{ flex: 1, gap: 3 }}><Text style={styles.summaryTitle}>Medication Adherence</Text><Text style={styles.summarySubtitle}>Recorded consistency · {memberName} · {rangeLabel}</Text></View>
+              <View style={{ flex: 1, gap: 3 }}><Text style={styles.summaryTitle}>Medication adherence</Text><Text style={styles.summarySubtitle}>{range === "all" ? "All time" : `Last ${rangeLabel}`} · {memberName}</Text></View>
               <View style={styles.percentBadge}><Text style={styles.percentText}>{totalDoses ? adherence + "%" : "—"}</Text></View>
             </View>
+            <View accessibilityRole="progressbar" accessibilityLabel="Medication adherence" accessibilityValue={{ min: 0, max: 100, now: adherence, text: totalDoses ? `${adherence}% of recorded doses taken` : "No recorded doses" }} style={styles.progressTrack}><View style={[styles.progressFill, { width: `${adherence}%` }]}/></View>
             <View style={styles.summaryStats}>
-              {[{ label: "Taken", value: takenDoses - lateDoses, color: colors.success }, { label: "Taken late", value: lateDoses, color: colors.warning }, { label: "Missed", value: missedDoses, color: colors.error }].map(item => <View key={item.label} style={styles.statTile}><Text style={[styles.statValue, { color: item.color }]}>{item.value}</Text><Text style={[styles.statLabel, { color: item.color }]}>{item.label}</Text></View>)}
+              {[{ label: "Taken", value: takenDoses - lateDoses, color: colors.success, background: "#EAF8F0" }, { label: "Taken late", value: lateDoses, color: colors.warning, background: "#FFF5E2" }, { label: "Missed", value: missedDoses, color: colors.error, background: "#FCECEC" }].map(item => <View key={item.label} style={[styles.statTile, { backgroundColor: item.background }]}><Text style={[styles.statValue, { color: item.color }]}>{item.value}</Text><Text style={[styles.statLabel, { color: item.color }]}>{item.label}</Text></View>)}
             </View>
           </View>
+          <View style={styles.calendarCard}>
+          <Text style={styles.calendarMonth}>{new Date(`${selectedDate}T12:00:00`).toLocaleDateString(undefined, { month: "long", year: "numeric" }).toUpperCase()}</Text>
           <HistoryDateDial taken={dailyTaken} missed={dailyMissed} onSelectDate={setSelectedDate} />
-          <View style={{ gap: 8 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          </View>
+          <View style={styles.historySection}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
           <Text style={styles.dayTitle}>{formatIsoDate(`${selectedDate}T12:00:00`)}</Text>
-          <Pressable accessibilityRole="button" accessibilityState={{ expanded: showFilters }} testID="history-more-filters" onPress={() => setShowFilters(value => !value)} style={{ alignSelf: "flex-end", padding: 8 }}><Text style={styles.summarySubtitle}>{medicineFilter === "all" ? "All items" : medicineFilter === "protocols" ? "Eye-drop protocols" : medicines.find(item => item.id === medicineFilter)?.name} · {rangeLabel} · Filters {showFilters ? "⌃" : "⌄"}</Text></Pressable>
+          <PressableScale accessibilityRole="button" accessibilityLabel="History filters" accessibilityState={{ expanded: showFilters }} testID="history-more-filters" onPress={() => setShowFilters(value => !value)} style={{ padding: 8, minHeight: 44, justifyContent: "center" }}><Text style={styles.summarySubtitle}>{rangeLabel} · Filters {showFilters ? "⌃" : "⌄"}</Text></PressableScale>
           </View>
           {showFilters ? <>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow} testID="history-medicine-filter">
@@ -282,8 +289,6 @@ export default function HistoryScreen() {
               />
             ))}
           </ScrollView>
-          </View>
-
           {grouped.length === 0 ? (
             <View style={styles.empty}>
               <Ionicons name={statusFilter === "missed" ? "checkmark-circle-outline" : "time-outline"} size={30} color={colors.muted} />
@@ -299,81 +304,40 @@ export default function HistoryScreen() {
           ) : (
             grouped.map(([date, entries]) => (
               <View key={date} style={styles.day}>
-                <Text style={styles.dayTitle}>{formatIsoDate(`${date}T12:00:00`)}</Text>
                 <View style={styles.dayList}>
                   {entries.map((entry) => {
-                    if (entry.kind === "missed") {
-                      const label =
-                        entry.event.source_type === "protocol_step"
-                          ? `${entry.event.protocol_name} · step ${entry.event.step_order}`
-                          : entry.event.medicine_name;
-                      return (
-                        <View key={entry.event.id} testID={`history-missed-${entry.event.id}`} style={styles.dayRow}>
-                          <View style={styles.missedCheck}>
-                            <Ionicons name="close" size={13} color={colors.onError} />
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.dayMedicine}>{label}</Text>
-                            <Text style={styles.dayMeta}>{members.find(member => member.id === entry.event.member_id)?.name ?? "Shared"} · {formatTime(entry.event.time)} · {entry.event.local_date}</Text>
-                          </View>
-                          <View style={styles.missedBadge}><Text style={styles.missedBadgeText}>MISSED</Text></View>
-                        </View>
-                      );
-                    }
-                    if (entry.kind === "protocol") {
-                      const key = `${date}-${entry.protocolId}`;
-                      const isOpen = !!expanded[key];
-                      const firstStep = entry.steps[0];
-                      const lastStep = entry.steps[entry.steps.length - 1];
-                      return (
-                        <View key={key}>
-                          <Pressable
-                            testID={`history-protocol-${entry.protocolId}`}
-                            onPress={() => setExpanded((state) => ({ ...state, [key]: !isOpen }))}
-                            style={({ pressed }) => [styles.dayRow, pressed && styles.pressed]}
-                          >
-                            <View style={[styles.dayCheck, { backgroundColor: colors.info }]}>
-                              <Ionicons name="water" size={14} color={colors.onInfo} />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.dayMedicine}>{entry.protocolName}</Text>
-                              <Text style={styles.dayMeta}>
-                                ✓ {entry.steps.length}-step protocol · {formatTime(firstStep.time)}–{formatTime(lastStep.time)}
-                              </Text>
-                            </View>
-                            <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={16} color={colors.muted} />
-                          </Pressable>
-                          {isOpen ? (
-                            <View style={styles.stepChildren}>
-                              {entry.steps.map((step) => (
-                                <View key={step.id} style={styles.stepChildRow}>
-                                  <View style={styles.stepChildIndex}>
-                                    <Text style={styles.stepChildIndexText}>{step.step_order}</Text>
-                                  </View>
-                                  <View style={{ flex: 1 }}>
-                                    <Text style={styles.stepChildName}>{step.medicine_name}</Text>
-                                    <Text style={styles.stepChildMeta}>
-                                      {step.dose} · {step.eye === "both" ? "Both eyes" : step.eye === "left" ? "Left eye" : "Right eye"}
-                                    </Text>
-                                  </View>
-                                  <Text style={styles.stepChildTime}>✓ {formatTime(step.time)}</Text>
-                                </View>
-                              ))}
-                            </View>
-                          ) : null}
-                        </View>
-                      );
-                    }
+                    const record = entry.kind === "dose" ? entry.log : entry.kind === "missed" ? entry.event : entry.steps[0];
+                    const id = entry.kind === "protocol" ? `${date}-${entry.protocolId}` : `${entry.kind}-${record.id}`;
+                    const isOpen = !!expanded[id];
+                    const late = entry.kind === "dose" ? isHistoryTakenLate(entry.log) : entry.kind === "protocol" && entry.steps.some(isHistoryTakenLate);
+                    const status = entry.kind === "missed" ? "Missed" : late ? "Taken late" : "Taken";
+                    const title = entry.kind === "protocol" ? entry.protocolName : entry.kind === "missed" && entry.event.source_type === "protocol_step" ? `${entry.event.protocol_name} · step ${entry.event.step_order}` : record.medicine_name;
+                    const medicineId = entry.kind === "dose" ? entry.log.medicine_id : entry.kind === "missed" ? entry.event.medicine_id : undefined;
+                    const medicine = medicines.find(value => value.id === medicineId);
+                    const owner = members.find(member => member.id === record.member_id)?.name ?? "Shared with you";
+                    const tone = status === "Missed" ? { backgroundColor: "#FCECEC", color: colors.error } : late ? { backgroundColor: "#FFF5E2", color: colors.warning } : { backgroundColor: "#EAF8F0", color: colors.success };
                     return (
-                      <View key={entry.log.id} style={styles.dayRow}>
-                        <View style={styles.dayCheck}>
-                          <Ionicons name="checkmark" size={13} color={colors.onSuccess} />
+                      <View key={id} testID={entry.kind === "missed" ? `history-missed-${record.id}` : `history-record-${record.id}`}>
+                        <View style={styles.dayRow}>
+                          <View style={styles.medicineIcon}>{medicine?.image_url ? <Image source={{ uri: medicine.image_url }} accessibilityLabel={`${title} photo`} style={styles.medicineImage}/> : entry.kind === "protocol" || (entry.kind === "missed" && entry.event.source_type === "protocol_step") ? <Ionicons name="water-outline" size={25} color={colors.brandPrimary}/> : <MaterialCommunityIcons name="pill" size={26} color={colors.brandPrimary}/>}</View>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={styles.dayMedicine}>{title}</Text>
+                            {entry.kind === "dose" && <Text style={styles.dayMeta}>{takenAt(entry.log.logged_at)}</Text>}
+                          </View>
+                          <View style={[styles.statusBadge, { backgroundColor: tone.backgroundColor }]}><Text style={[styles.statusText, { color: tone.color }]}>{status}</Text></View>
+                          <Pressable testID={entry.kind === "protocol" ? `history-protocol-${entry.protocolId}` : `history-details-${id}`} accessibilityRole="button" accessibilityLabel={`${isOpen ? "Hide" : "Show"} details for ${title}`} accessibilityState={{ expanded: isOpen }} hitSlop={8} onPress={() => setExpanded(state => ({ ...state, [id]: !isOpen }))} style={styles.chevron}>
+                            <Ionicons name={isOpen ? "chevron-up" : "chevron-forward"} size={22} color={colors.onSurfaceTertiary}/>
+                          </Pressable>
                         </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.dayMedicine}>{entry.log.medicine_name}</Text>
-                          <Text style={styles.dayMeta}>{members.find(member => member.id === entry.log.member_id)?.name ?? "Shared"} · {statusFilter === "taken-late" ? takenAt(entry.log.logged_at) : formatTime(entry.log.time)} · {entry.log.local_date}</Text>
-                        </View>
-                        <View style={[styles.takenBadge, isHistoryTakenLate(entry.log) && { backgroundColor: "#FFF1CC" }]}><Text style={[styles.takenBadgeText, isHistoryTakenLate(entry.log) && { color: colors.warning }]}>{isHistoryTakenLate(entry.log) ? "TAKEN LATE" : "TAKEN"}</Text></View>
+                        {isOpen && <View testID={`history-expanded-${id}`} style={styles.recordDetails}>
+                          <Text style={styles.detailLine}>Scheduled {formatTime(entry.time)}</Text>
+                          <Text style={styles.detailLine}>{owner}</Text>
+                          <Text style={styles.detailLine}>Date: {formatIsoDate(`${date}T12:00:00`)}</Text>
+                          {entry.kind === "dose" && <Text style={styles.detailLine}>Dose: {entry.log.dosage}</Text>}
+                          {entry.kind === "missed" && <><Text style={styles.detailLine}>Dose: {entry.event.dosage}</Text><Text style={styles.detailLine}>Missed: not marked as taken</Text></>}
+                          {!!medicine?.instructions && <Text style={styles.detailLine}>Current instructions: {medicine.instructions}</Text>}
+                          {entry.kind === "protocol" && entry.steps.map(step => <View key={step.id} style={styles.protocolDetail}><Text style={styles.detailLine}>Step {step.step_order}: {step.medicine_name}</Text><Text style={styles.dayMeta}>{step.dose} · {step.eye === "both" ? "Both eyes" : step.eye === "left" ? "Left eye" : "Right eye"}</Text><Text style={styles.dayMeta}>Scheduled {formatTime(step.time)} · {takenAt(step.logged_at)}</Text></View>)}
+                        </View>}
                       </View>
                     );
                   })}
@@ -381,6 +345,7 @@ export default function HistoryScreen() {
               </View>
             ))
           )}
+          </View>
         </>
       )}
     </ScreenShell>
@@ -402,7 +367,7 @@ function FilterPill({
 }) {
   const styles = useStyles();
   return (
-    <Pressable
+    <PressableScale
       testID={testID}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
@@ -415,7 +380,7 @@ function FilterPill({
     >
       {accent ? <View style={[styles.filterAccent, { backgroundColor: accent }]} /> : null}
       <Text style={[styles.filterText, active && styles.filterTextActive]}>{label}</Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -448,7 +413,7 @@ const useStyles = makeStyles((colors) => {
     adherenceRingText: { color: colors.brandPrimary, fontWeight: "800", fontSize: 15 },
     filterRow: { gap: 8, paddingRight: 4 },
     filterPill: {
-      minHeight: 36,
+      minHeight: 44,
       paddingHorizontal: 14,
       borderRadius: 10,
       borderWidth: 1,
@@ -468,19 +433,20 @@ const useStyles = makeStyles((colors) => {
     emptyTitle: { color: colors.onSurface, fontSize: 16, fontWeight: "800" },
     emptyText: { color: colors.muted, fontSize: 13, textAlign: "center" },
     day: { gap: 8 },
-    dayTitle: { color: colors.onSurface, fontSize: 15, fontWeight: "800" },
+    dayTitle: { color: colors.onSurface, fontSize: 18, fontWeight: "700" },
     dayList: {
       backgroundColor: colors.surfaceSecondary,
       borderRadius: 18,
-      gap: 10,
+      gap: 0,
+      overflow: "hidden",
     },
     dayRow: {
-      minHeight: 68,
+      minHeight: 92,
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
-      paddingHorizontal: 14,
-      borderWidth: 1, borderColor: colors.divider, borderRadius: 14, backgroundColor: colors.surfaceSecondary, paddingVertical: 12,
+      gap: 10,
+      paddingHorizontal: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, backgroundColor: colors.surface, paddingVertical: 12,
     },
     dayCheck: {
       width: 26,
@@ -498,8 +464,19 @@ const useStyles = makeStyles((colors) => {
       alignItems: "center",
       justifyContent: "center",
     },
-    dayMedicine: { color: colors.onSurface, fontSize: 14, fontWeight: "800" },
-    dayMeta: { color: colors.muted, fontSize: 12, marginTop: 2 },
+    dayMedicine: { color: colors.onSurface, fontSize: 17, fontWeight: "700" },
+    dayMeta: { color: colors.onSurfaceTertiary, fontSize: 13, marginTop: 3 },
+    historySection: { backgroundColor: colors.surfaceSecondary, borderRadius: 22, padding: 10, gap: 10 },
+    calendarCard: { backgroundColor: colors.surfaceSecondary, borderRadius: 22, paddingTop: 12, paddingBottom: 2, gap: 2 },
+    calendarMonth: { paddingHorizontal: 14, color: colors.onSurfaceTertiary, fontSize: 13, fontWeight: "600" },
+    medicineIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
+    medicineImage: { width: 44, height: 44, borderRadius: 22 },
+    statusBadge: { paddingHorizontal: 9, paddingVertical: 8, borderRadius: 9, maxWidth: 80 },
+    statusText: { fontSize: 12, fontWeight: "600", textAlign: "center" },
+    chevron: { width: 28, minHeight: 44, alignItems: "center", justifyContent: "center" },
+    recordDetails: { padding: 14, gap: 8, backgroundColor: colors.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+    detailLine: { fontSize: 14, color: colors.onSurfaceSecondary },
+    protocolDetail: { gap: 2, paddingVertical: 6 },
     dayTime: { color: colors.onSurfaceSecondary, fontSize: 12, fontWeight: "700" },
     stepChildren: {
       backgroundColor: colors.surface,
@@ -528,13 +505,15 @@ const useStyles = makeStyles((colors) => {
     stepChildMeta: { color: colors.muted, fontSize: 11, marginTop: 1 },
     stepChildTime: { color: colors.brandPrimary, fontSize: 12, fontWeight: "700" },
     summaryHeading: { flexDirection: "row", alignItems: "center", gap: 10 },
-    summaryTitle: { color: colors.onBrandTertiary, fontSize: 17, fontWeight: "800" },
-    summarySubtitle: { color: colors.onSurfaceSecondary, fontSize: 11, lineHeight: 17 },
-    percentBadge: { paddingVertical: 9, paddingHorizontal: 13, borderRadius: 14, backgroundColor: colors.brandPrimary },
-    percentText: { color: colors.onBrandPrimary, fontSize: 22, fontWeight: "800" },
+    summaryTitle: { color: colors.onBrandTertiary, fontSize: 18, fontWeight: "700" },
+    summarySubtitle: { color: colors.onSurfaceSecondary, fontSize: 13 },
+    percentBadge: { paddingLeft: 8 },
+    percentText: { color: colors.brandPrimary, fontSize: 30, fontWeight: "800" },
+    progressTrack: { height: 9, borderRadius: 5, backgroundColor: colors.surfaceTertiary, overflow: "hidden" },
+    progressFill: { height: "100%", borderRadius: 5, backgroundColor: colors.brandPrimary },
     summaryStats: { flexDirection: "row", gap: 8 },
     statTile: { flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 10, alignItems: "center", gap: 3 },
-    statValue: { fontSize: 17, fontWeight: "800" },
+    statValue: { fontSize: 22, fontWeight: "700" },
     statLabel: { fontSize: 12 },
     activityCard: { backgroundColor: colors.surfaceSecondary, borderRadius: 18, padding: 16, gap: 19 },
     activityTitle: { color: colors.onSurfaceSecondary, fontSize: 13, fontWeight: "700" },

@@ -4,6 +4,7 @@ const nodes = n => !n || typeof n !== 'object' ? [] : Array.isArray(n) ? n.flatM
 function harness() {
   const states = [], calls = []; let cursor = 0, stored = [];
   const mocks = {
+    "@/src/components/ui/PressableScale": { __esModule: true, default: "button" },
     react: { useState(initial) { const i = cursor++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], value => { states[i] = typeof value === 'function' ? value(states[i]) : value; }]; }, useEffect() {}, useCallback: fn => fn, useRef: value => ({ current: value }) },
     'react-native': { Platform: { OS: 'android' }, View: 'view', Text: 'text', Pressable: 'button', ScrollView: 'scroll', KeyboardAvoidingView: 'keyboard' },
     'expo-router': { Stack: { Screen: 'screen' }, useLocalSearchParams: () => ({}), useRouter: () => ({ push: value => calls.push(['route', value]) }) },

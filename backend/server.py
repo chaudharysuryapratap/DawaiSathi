@@ -423,6 +423,16 @@ class AccountLogin(BaseModel):
     password: str = Field(min_length=1, max_length=72)
 
 
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=60)
+    email: Optional[EmailStr] = None
+
+
+class PasswordUpdate(BaseModel):
+    current_password: str = Field(min_length=1, max_length=72)
+    new_password: str = Field(min_length=8, max_length=72)
+
+
 class GoogleAccountLogin(BaseModel):
     id_token: str = Field(min_length=1, max_length=10000)
     password: Optional[str] = Field(default=None, max_length=72)
@@ -530,6 +540,8 @@ class DoseLog(BaseModel):
     local_date: str
     member_id: Optional[str] = None
     family_group_id: Optional[str] = None
+    status: str = "taken"
+    undone_at: Optional[str] = None
 
 
 class TodayDose(BaseModel):
@@ -700,6 +712,8 @@ class Checkup(BaseModel):
 
 
 class AttentionItem(BaseModel):
+    can_resend: bool = False
+    delivery_status: Optional[str] = None
     id: str
     kind: str
     title: str
@@ -716,14 +730,22 @@ class AttentionResponse(BaseModel):
     items: List[AttentionItem]
 
 
+class ReminderRequest(BaseModel):
+    family_group_id: str = Field(min_length=1, max_length=100)
+    attention_id: str = Field(min_length=1, max_length=250)
+    request_id: str = Field(min_length=1, max_length=100)
+
+
 class NotificationPreference(BaseModel):
     medicine_reminders: bool = True
     checkup_reminders: bool = True
+    eye_drop_reminders: bool = True
     reminder_sound: bool = True
     voice_reminders: bool = False
     push_enabled: bool = False
     whatsapp_linked: bool = False
     telegram_linked: bool = False
+    telegram_reminders: bool = True
 
 
 async def ensure_primary_member() -> None:
@@ -778,7 +800,7 @@ async def ensure_family_groups() -> None:
         {"$set": {"member_ids": member_ids, "updated_at": now_iso()}},
     )
 
-    for collection in ("medicines", "eye_drop_protocols", "checkups", "dose_logs", "protocol_step_logs"):
+    for collection in ("medicines", "eye_drop_protocols", "checkups", "dose_logs", "dose_undo_events", "protocol_step_logs"):
         await db[collection].update_many(
             {"family_group_id": {"$exists": False}},
             {"$set": {"family_group_id": default_group_id}},
@@ -1072,6 +1094,7 @@ async def startup_event() -> None:
         unique=True,
         name="uniq_medicine_time_date",
     )
+    await db.dose_undo_events.create_index("id", unique=True, name="uniq_dose_undo_event")
 
 
 @auth_router.post("/register", response_model=AccountSession)
@@ -1186,6 +1209,39 @@ async def login_account(input: AccountLogin):
 @auth_router.get("/me", response_model=Account)
 async def current_account(user: dict = Depends(require_authenticated_user)):
     return _account_public(user)
+
+
+@auth_router.patch("/me", response_model=Account)
+async def update_account(input: ProfileUpdate, user: dict = Depends(require_authenticated_user)):
+    payload = {}
+    if input.name is not None:
+        if not input.name.strip():
+            raise HTTPException(status_code=422, detail="Enter your name")
+        payload["name"] = input.name.strip()
+    if input.email is not None:
+        payload["email"] = str(input.email).strip().lower()
+    try:
+        if payload:
+            await db.users.update_one({"id": user["id"]}, {"$set": payload})
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail="This login ID is already in use")
+    return _account_public({**user, **payload})
+
+
+@auth_router.put("/password")
+async def change_password(input: PasswordUpdate, user: dict = Depends(require_authenticated_user)):
+    stored = await db.users.find_one({"id": user["id"]})
+    if not stored:
+        raise HTTPException(status_code=401, detail="Please log in again")
+    if len(input.current_password.encode("utf-8")) > 72 or not await run_in_threadpool(bcrypt.checkpw, input.current_password.encode("utf-8"), stored["password_hash"].encode("ascii")):
+        raise HTTPException(status_code=403, detail="Current password is incorrect")
+    if len(input.new_password.encode("utf-8")) > 72:
+        raise HTTPException(status_code=422, detail="Password is too long")
+    password_hash = await run_in_threadpool(bcrypt.hashpw, input.new_password.encode("utf-8"), bcrypt.gensalt())
+    result = await db.users.update_one({"id": user["id"], "password_hash": stored["password_hash"]}, {"$set": {"password_hash": password_hash.decode("ascii")}})
+    if result.modified_count != 1:
+        raise HTTPException(status_code=409, detail="Password changed elsewhere. Try again.")
+    return {"ok": True}
 
 
 @auth_router.post("/google", response_model=AccountSession)
@@ -1329,7 +1385,7 @@ async def remove_family_profile(family_group_id: str, member_id: str):
         raise HTTPException(status_code=400, detail="Primary member cannot be removed")
     # Preserve records, including their historical names. No account is deleted.
     # Scope the change to this family even if the profile belongs to other families.
-    for collection in ("medicines", "eye_drop_protocols", "checkups", "dose_logs", "protocol_step_logs", "missed_dose_events"):
+    for collection in ("medicines", "eye_drop_protocols", "checkups", "dose_logs", "dose_undo_events", "protocol_step_logs", "missed_dose_events"):
         await db[collection].update_many(
             {"family_group_id": family_group_id, "member_id": member_id},
             {"$set": {"member_id": None}},
@@ -2000,8 +2056,17 @@ async def log_dose(medicine_id: str, input: DoseLogCreate):
 @api_router.delete("/medicines/{medicine_id}/dose")
 async def undo_dose(medicine_id: str, time: str = Query(...), date: Optional[str] = None):
     date_value = date or local_date()
+    dose_filter = {"medicine_id": medicine_id, "time": time, "local_date": date_value}
+    original = await db.dose_logs.find_one(dose_filter, {"_id": 0})
+    if not original:
+        raise HTTPException(status_code=404, detail="Dose log not found")
+    # Persist the audit before removing the active record. A failed audit write
+    # leaves the dose taken, and retries preserve the original undo timestamp.
+    audit = {**original, "id": "undo-" + original["id"], "status": "undone", "undone_at": now_iso()}
+    await db.dose_undo_events.update_one({"id": audit["id"]}, {"$setOnInsert": audit}, upsert=True)
     result = await db.dose_logs.find_one_and_delete(
         {
+            "id": original["id"],
             "medicine_id": medicine_id,
             "time": time,
             "local_date": date_value,
@@ -2036,6 +2101,8 @@ async def dose_history(
     if date is not None:
         query["local_date"] = date
     documents = await db.dose_logs.find(query, {"_id": 0}).sort("logged_at", -1).to_list(limit)
+    undone = await db.dose_undo_events.find(query, {"_id": 0}).sort("undone_at", -1).to_list(limit)
+    documents = sorted(documents + undone, key=lambda item: item.get("undone_at") or item["logged_at"], reverse=True)[:limit]
     return [DoseLog(**document) for document in documents]
 
 
@@ -2260,6 +2327,47 @@ async def attention(family_group_id: Optional[str] = None):
             )
     items.sort(key=lambda item: item.when)
     return AttentionResponse(items=items)
+
+
+@api_router.get("/inbox", response_model=AttentionResponse)
+async def inbox(family_group_id: str = Query(..., min_length=1, max_length=100), user: dict = Depends(require_authenticated_user)):
+    alerts = await attention(family_group_id)
+    for item in alerts.items:
+        item.can_resend = item.kind in {"missed-dose", "late-dose"}
+    missed = await missed_dose_history(family_group_id)
+    existing_keys = {(item.medicine_id, item.protocol_id, item.when) for item in alerts.items}
+    for event in missed:
+        when = f"{event.local_date}T{event.time}:00"
+        if (event.medicine_id, event.protocol_id, when) not in existing_keys:
+            alerts.items.append(AttentionItem(id=f"history:{event.id}", kind="missed-dose",
+                title=f"Missed dose · {event.medicine_name}", detail=f"{event.dosage} at {event.time}",
+                when=when, medicine_id=event.medicine_id, protocol_id=event.protocol_id,
+                member_id=event.member_id, family_group_id=family_group_id))
+    records = await db.reminder_requests.find(
+        {"family_group_id": family_group_id, "user_id": user["id"]}, {"_id": 0}
+    ).sort("when", -1).to_list(500)
+    items = alerts.items + [AttentionItem(**record) for record in records]
+    items.sort(key=lambda item: item.when, reverse=True)
+    return AttentionResponse(items=items)
+
+
+@api_router.post("/inbox/resend", response_model=AttentionItem)
+async def resend_reminder(input: ReminderRequest, user: dict = Depends(require_authenticated_user)):
+    record_id = f"reminder:{user['id']}:{input.family_group_id}:{input.request_id}"
+    existing = await db.reminder_requests.find_one({"id": record_id, "family_group_id": input.family_group_id}, {"_id": 0})
+    if existing:
+        return AttentionItem(**existing)
+    alerts = await attention(input.family_group_id)
+    target = next((item for item in alerts.items if item.id == input.attention_id), None)
+    if not target or target.kind not in {"missed-dose", "late-dose"}:
+        raise HTTPException(status_code=409, detail="This dose no longer needs a reminder. Refresh your inbox.")
+    record = target.model_dump()
+    record.update(id=record_id, kind="reminder", title=f"Reminder requested · {target.title}",
+                  when=datetime.now().isoformat(), family_group_id=input.family_group_id,
+                  user_id=user["id"], delivery_status="pending")
+    # Persist a request, never claim notification delivery before a sender exists.
+    await db.reminder_requests.update_one({"_id": record_id}, {"$setOnInsert": record}, upsert=True)
+    return AttentionItem(**record)
 
 
 @api_router.get("/upcoming-checkup", response_model=Optional[Checkup])

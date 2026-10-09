@@ -1,3 +1,4 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as DocumentPicker from "expo-document-picker";
@@ -337,11 +338,11 @@ export default function PrescriptionScreen() {
     >
       <Stack.Screen
         options={{
-          title,
+          title: screen === "camera" ? "Scan prescription" : title,
           headerLeft:
             screen !== "list"
               ? () => (
-                  <Pressable
+                  <PressableScale scaleTo={0.88} hitSlop={14}
                     accessibilityLabel="Go back"
                     onPress={() => {
                       setError("");
@@ -357,14 +358,16 @@ export default function PrescriptionScreen() {
                       size={24}
                       color={colors.onSurface}
                     />
-                  </Pressable>
+                  </PressableScale>
                 )
               : undefined,
         }}
       />
       <ScrollView
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 32 }}
+        contentContainerStyle={screen === "camera"
+          ? { flexGrow: 1, padding: 8, gap: 16, paddingBottom: 8 }
+          : { padding: 20, gap: 16, paddingBottom: 32 }}
       >
       {screen === "camera" && <PrescriptionCamera onPhoto={async uri => { const page = await pageFrom(uri, "Prescription photo.jpg", "image/jpeg"); setPhoto(page); setScreen("photo"); }} onUpload={() => void pick(false)} />}
         {!!error && (

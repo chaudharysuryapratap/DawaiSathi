@@ -1,10 +1,10 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -130,14 +130,14 @@ function EyeDropProtocolForm({ existing }: { existing?: EyeDropProtocol }) {
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Pressable
+        <PressableScale scaleTo={0.88} hitSlop={14}
           accessibilityLabel="Close"
           onPress={() => router.back()}
           style={({ pressed }) => [styles.close, pressed && styles.pressed]}
           testID="protocol-close"
         >
           <Ionicons name="close" size={22} color={colors.onSurface} />
-        </Pressable>
+        </PressableScale>
         <Text style={styles.headerTitle}>{existing ? "Modify protocol" : "Staggered eye drops"}</Text>
         <View style={styles.close} />
       </View>
@@ -167,7 +167,7 @@ function EyeDropProtocolForm({ existing }: { existing?: EyeDropProtocol }) {
           <Text style={styles.label}>Who is this for?</Text>
           <View style={styles.chips}>
             {members.map((member) => (
-              <Pressable
+              <PressableScale
                 key={member.id}
                 testID={`protocol-member-${member.id}`}
                 onPress={() => setMemberId(member.id)}
@@ -181,9 +181,9 @@ function EyeDropProtocolForm({ existing }: { existing?: EyeDropProtocol }) {
                 <Text style={[styles.chipText, memberId === member.id && styles.chipTextActive]}>
                   {member.name}
                 </Text>
-              </Pressable>
+              </PressableScale>
             ))}
-            <Pressable
+            <PressableScale
               testID="protocol-member-none"
               onPress={() => setMemberId(null)}
               style={({ pressed }) => [
@@ -193,7 +193,7 @@ function EyeDropProtocolForm({ existing }: { existing?: EyeDropProtocol }) {
               ]}
             >
               <Text style={[styles.chipText, memberId === null && styles.chipTextActive]}>Shared</Text>
-            </Pressable>
+            </PressableScale>
           </View>
         </View>
 
@@ -201,7 +201,7 @@ function EyeDropProtocolForm({ existing }: { existing?: EyeDropProtocol }) {
           <Text style={styles.label}>Start time</Text>
           <View style={styles.chips}>
             {PRESET_STARTS.map((time) => (
-              <Pressable
+              <PressableScale
                 key={time}
                 testID={`protocol-start-${time}`}
                 onPress={() => setStartTime(time)}
@@ -212,7 +212,7 @@ function EyeDropProtocolForm({ existing }: { existing?: EyeDropProtocol }) {
                 ]}
               >
                 <Text style={[styles.chipText, startTime === time && styles.chipTextActive]}>{time}</Text>
-              </Pressable>
+              </PressableScale>
             ))}
           </View>
           <MedicineTimePicker onSelect={setStartTime} disabled={saving} />
@@ -223,7 +223,7 @@ function EyeDropProtocolForm({ existing }: { existing?: EyeDropProtocol }) {
           <Text style={styles.label}>Interval between steps</Text>
           <View style={styles.chips}>
             {INTERVAL_PRESETS.map((value) => (
-              <Pressable
+              <PressableScale
                 key={value}
                 testID={`protocol-interval-${value}`}
                 onPress={() => setInterval(value)}
@@ -236,21 +236,21 @@ function EyeDropProtocolForm({ existing }: { existing?: EyeDropProtocol }) {
                 <Text style={[styles.chipText, interval === value && styles.chipTextActive]}>
                   {value} min
                 </Text>
-              </Pressable>
+              </PressableScale>
             ))}
           </View>
         </View>
 
         <View style={styles.stepsHeader}>
           <Text style={styles.label}>Eye drops in order</Text>
-          <Pressable
+          <PressableScale
             testID="protocol-add-step"
             onPress={addStep}
             style={({ pressed }) => [styles.addStepButton, pressed && styles.pressed]}
           >
             <Ionicons name="add" size={16} color={colors.brandPrimary} />
             <Text style={styles.addStepText}>Add step</Text>
-          </Pressable>
+          </PressableScale>
         </View>
 
         {steps.map((step, index) => (
@@ -261,7 +261,7 @@ function EyeDropProtocolForm({ existing }: { existing?: EyeDropProtocol }) {
               </View>
               <Text style={styles.stepTime}>{timeline[index]}</Text>
               <View style={{ flex: 1 }} />
-              <Pressable
+              <PressableScale scaleTo={0.88} hitSlop={14}
                 onPress={() => moveStep(index, -1)}
                 disabled={index === 0}
                 style={({ pressed }) => [
@@ -272,8 +272,8 @@ function EyeDropProtocolForm({ existing }: { existing?: EyeDropProtocol }) {
                 testID={`protocol-step-up-${index}`}
               >
                 <Ionicons name="arrow-up" size={14} color={colors.brandPrimary} />
-              </Pressable>
-              <Pressable
+              </PressableScale>
+              <PressableScale scaleTo={0.88} hitSlop={14}
                 onPress={() => moveStep(index, 1)}
                 disabled={index === steps.length - 1}
                 style={({ pressed }) => [
@@ -284,8 +284,8 @@ function EyeDropProtocolForm({ existing }: { existing?: EyeDropProtocol }) {
                 testID={`protocol-step-down-${index}`}
               >
                 <Ionicons name="arrow-down" size={14} color={colors.brandPrimary} />
-              </Pressable>
-              <Pressable
+              </PressableScale>
+              <PressableScale scaleTo={0.88} hitSlop={14}
                 onPress={() => removeStep(index)}
                 disabled={steps.length === 1}
                 style={({ pressed }) => [
@@ -296,7 +296,7 @@ function EyeDropProtocolForm({ existing }: { existing?: EyeDropProtocol }) {
                 testID={`protocol-step-remove-${index}`}
               >
                 <Ionicons name="trash-outline" size={14} color={colors.error} />
-              </Pressable>
+              </PressableScale>
             </View>
             <TextInput
               testID={`protocol-step-name-${index}`}
@@ -319,7 +319,7 @@ function EyeDropProtocolForm({ existing }: { existing?: EyeDropProtocol }) {
             </View>
             <View style={styles.chips}>
               {EYES.map((eye) => (
-                <Pressable
+                <PressableScale
                   key={eye}
                   testID={`protocol-step-eye-${index}-${eye}`}
                   onPress={() => updateStep(index, { eye })}
@@ -332,7 +332,7 @@ function EyeDropProtocolForm({ existing }: { existing?: EyeDropProtocol }) {
                   <Text style={[styles.chipText, step.eye === eye && styles.chipTextActive]}>
                     {EYE_LABEL[eye]}
                   </Text>
-                </Pressable>
+                </PressableScale>
               ))}
             </View>
           </View>

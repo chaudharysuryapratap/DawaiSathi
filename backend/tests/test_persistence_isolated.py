@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from types import SimpleNamespace
 from datetime import datetime
 
 import pytest
@@ -8,6 +9,26 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import ValidationError
 
 import server
+
+
+def test_failed_undo_audit_write_preserves_active_taken_record(monkeypatch):
+    removed = []
+
+    class Logs:
+        async def find_one(self, *args):
+            return {"id": "original", "medicine_id": "medicine", "logged_at": "2026-10-09T08:00:00Z"}
+
+        async def find_one_and_delete(self, *args):
+            removed.append(True)
+
+    class Audit:
+        async def update_one(self, *args, **kwargs):
+            raise RuntimeError("audit storage unavailable")
+
+    monkeypatch.setattr(server, "db", SimpleNamespace(dose_logs=Logs(), dose_undo_events=Audit()))
+    with pytest.raises(RuntimeError, match="audit storage unavailable"):
+        asyncio.run(server.undo_dose("medicine", time="08:00", date="2026-10-09"))
+    assert removed == []
 
 
 @pytest.fixture
@@ -98,6 +119,17 @@ def test_medicine_and_dose_writes_are_read_back_from_mongodb(isolated_database):
             {"_id": 0},
         )
         assert restored_medicine["quantity_remaining"] == 3
+        audit = await server.dose_history(limit=50, family_group_id=family_group_id)
+        undone = next(item for item in audit if item.status == "undone")
+        assert undone.logged_at == first_log.logged_at
+        assert undone.undone_at is not None
+        with pytest.raises(HTTPException):
+            await server.undo_dose(medicine.id, time="08:00")
+        assert await database.dose_undo_events.count_documents({"medicine_id": medicine.id}) == 1
+        retaken = await server.log_dose(medicine.id, server.DoseLogCreate(time="08:00"))
+        assert retaken.id != first_log.id
+        audit = await server.dose_history(limit=50, family_group_id=family_group_id)
+        assert len(audit) == 2
 
     loop.run_until_complete(exercise())
 

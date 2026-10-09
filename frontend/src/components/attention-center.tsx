@@ -10,6 +10,7 @@ import { makeStyles, useTheme } from "@/src/theme";
 import type { AttentionItem, AttentionKind } from "@/src/types";
 
 const iconFor: Record<AttentionKind, keyof typeof Ionicons.glyphMap> = {
+  reminder: "notifications-outline",
   "missed-dose": "close-circle-outline",
   "late-dose": "time-outline",
   refill: "reload-outline",
@@ -18,6 +19,7 @@ const iconFor: Record<AttentionKind, keyof typeof Ionicons.glyphMap> = {
 };
 
 const toneFor: Record<AttentionKind, "error" | "warning" | "info" | "brand"> = {
+  reminder: "brand",
   "missed-dose": "error",
   "late-dose": "warning",
   refill: "warning",

@@ -32,6 +32,8 @@ function AuthenticatedApp() {
       <Stack.Protected guard={status === "signedIn"}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="care" />
+        <Stack.Screen name="settings" />
+        <Stack.Screen name="inbox" />
         <Stack.Screen name="add-medicine" options={{ presentation: "modal" }} />
         <Stack.Screen name="add-eye-drop-protocol" options={{ presentation: "modal" }} />
         <Stack.Screen name="add-checkup" options={{ presentation: "modal" }} />

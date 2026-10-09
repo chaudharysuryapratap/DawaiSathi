@@ -163,6 +163,8 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   currentAccount: () => request<Account>("/auth/me"),
+  updateAccount: (input: { name?: string; email?: string }) => request<Account>("/auth/me", { method: "PATCH", body: JSON.stringify(input) }),
+  changePassword: (current_password: string, new_password: string) => request<{ ok: boolean }>("/auth/password", { method: "PUT", body: JSON.stringify({ current_password, new_password }) }),
   familyJoinCode: (id: string) => request<{ family_group_id: string; code: string }>(
     `/family-groups/${encodeURIComponent(id)}/join-code`),
   acceptFamilyCode: (code: string) => request<{ ok: boolean; family_group_id: string }>("/family-code/accept", {
@@ -334,6 +336,9 @@ export const api = {
     request<{ items: AttentionItem[] }>(`/attention${query({ family_group_id: familyGroupId ?? null })}`),
 
   notificationPreferences: () => request<NotificationPreference>("/notifications/preferences"),
+  inbox: (familyGroupId: string) => request<{ items: AttentionItem[] }>(`/inbox${query({ family_group_id: familyGroupId })}`),
+  resendReminder: (familyGroupId: string, attentionId: string, requestId: string) =>
+    request<AttentionItem>("/inbox/resend", { method: "POST", body: JSON.stringify({ family_group_id: familyGroupId, attention_id: attentionId, request_id: requestId }) }),
   saveNotificationPreferences: (preferences: NotificationPreference) =>
     request<NotificationPreference>("/notifications/preferences", {
       method: "PUT",

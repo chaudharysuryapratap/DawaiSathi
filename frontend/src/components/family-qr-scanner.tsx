@@ -1,6 +1,7 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRef, useState } from "react";
-import { Linking, Pressable, Text, View } from "react-native";
+import { Linking, Text, View } from "react-native";
 import { familyCodeFromQr } from "@/src/family-code";
 import { useTheme } from "@/src/theme";
 
@@ -16,8 +17,8 @@ export function FamilyQrScanner({ onScan, onCancel }: { onScan: (code: string) =
       const code = familyCodeFromQr(data);
       if (!code) { setError("This is not a valid DawaiSathi family QR."); return; }
       handled.current = true; onScan(code);
-    }} /> : <Pressable accessibilityRole="button" onPress={() => { void (permission?.canAskAgain === false ? Linking.openSettings() : requestPermission()); }} style={{ padding: 16, borderRadius: 12, backgroundColor: colors.brandTertiary }}><Text style={{ color: colors.brandPrimary, fontWeight: "700" }}>{permission?.canAskAgain === false ? "Open camera settings" : "Allow camera access"}</Text></Pressable>}
+    }} /> : <PressableScale accessibilityRole="button" onPress={() => { void (permission?.canAskAgain === false ? Linking.openSettings() : requestPermission()); }} style={{ padding: 16, borderRadius: 12, backgroundColor: colors.brandTertiary }}><Text style={{ color: colors.brandPrimary, fontWeight: "700" }}>{permission?.canAskAgain === false ? "Open camera settings" : "Allow camera access"}</Text></PressableScale>}
     {error ? <Text accessibilityRole="alert" style={{ color: colors.error }}>{error}</Text> : null}
-    <Pressable accessibilityRole="button" onPress={onCancel} style={{ padding: 14 }}><Text style={{ color: colors.brandPrimary, textAlign: "center" }}>Back to family code</Text></Pressable>
+    <PressableScale accessibilityRole="button" onPress={onCancel} style={{ padding: 14 }}><Text style={{ color: colors.brandPrimary, textAlign: "center" }}>Back to family code</Text></PressableScale>
   </View>;
 }

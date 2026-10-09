@@ -14,6 +14,7 @@ function harness() {
     "@/src/theme":{useTheme:()=>({colors:{}})}
   };
   const filename=path.resolve(__dirname,"../src/components/history-date-dial.tsx"), loaded=new Module(filename,module);
+  mocks['@/src/utils/haptics']={press:()=>{}};
   loaded.require=id=>mocks[id]||require(id);
   loaded._compile(ts.transpileModule(fs.readFileSync(filename,"utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,filename);
   return {api:loaded.exports,render(){cursor=0;return loaded.exports.HistoryDateDial({taken:{},missed:{}});}};

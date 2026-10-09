@@ -76,6 +76,8 @@ export type TodayDose = {
 };
 
 export type DoseLog = {
+  status?: "taken" | "undone";
+  undone_at?: string | null;
   id: string;
   medicine_id: string;
   medicine_name: string;
@@ -148,9 +150,12 @@ export type AttentionKind =
   | "late-dose"
   | "refill"
   | "checkup"
-  | "family-request";
+  | "family-request"
+  | "reminder";
 
 export type AttentionItem = {
+  can_resend?: boolean;
+  delivery_status?: "pending" | "sent" | "failed";
   id: string;
   kind: AttentionKind;
   title: string;
@@ -166,11 +171,13 @@ export type AttentionItem = {
 export type NotificationPreference = {
   medicine_reminders: boolean;
   checkup_reminders: boolean;
+  eye_drop_reminders: boolean;
   reminder_sound: boolean;
   voice_reminders: boolean;
   push_enabled: boolean;
   whatsapp_linked: boolean;
   telegram_linked: boolean;
+  telegram_reminders?: boolean;
 };
 
 // ---------------------------------------------------------------------------

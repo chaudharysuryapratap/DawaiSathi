@@ -2,11 +2,29 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AppState, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import {
+  Animated,
+  AppState,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
+import {
+  TodayDoseAction,
+  doseTakenTime,
+} from "@/src/components/today-dose-action";
+import { useReduceMotion } from "@/src/components/ui/useReduceMotion";
 
 import { AppHeader } from "@/src/components/app-header";
 import { authHeaders, resolveMediaUrl } from "@/src/api";
-import { EmptyMedicineState, ErrorState, LoadingState, ScreenShell } from "@/src/components/dawai-ui";
+import {
+  EmptyMedicineState,
+  ErrorState,
+  LoadingState,
+  ScreenShell,
+} from "@/src/components/dawai-ui";
 import { EyeDropCard } from "@/src/components/eye-drop-card";
 import { EyeDropDetailSheet } from "@/src/components/eye-drop-detail-sheet";
 import { MedicineDetailSheet } from "@/src/components/medicine-detail-sheet";
@@ -47,25 +65,30 @@ export default function TodayScreen() {
     undoDose,
   } = useData();
   const [selectedDose, setSelectedDose] = useState<TodayDose | null>(null);
-  const [selectedProtocol, setSelectedProtocol] = useState<TodayProtocol | null>(null);
+  const [selectedProtocol, setSelectedProtocol] =
+    useState<TodayProtocol | null>(null);
   const [busyDoseIds, setBusyDoseIds] = useState<Set<string>>(() => new Set());
-  const [doseActionMessage, setDoseActionMessage] = useState<string | null>(null);
   const [doseActionError, setDoseActionError] = useState<string | null>(null);
   const doseActionsInFlight = useRef(new Set<string>());
   const [calendarNow, setCalendarNow] = useState(() => new Date());
   useEffect(() => {
     const timer = setInterval(() => setCalendarNow(new Date()), 60000);
-    const subscription = AppState.addEventListener("change", state => { if (state === "active") setCalendarNow(new Date()); });
-    return () => { clearInterval(timer); subscription.remove(); };
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") setCalendarNow(new Date());
+    });
+    return () => {
+      clearInterval(timer);
+      subscription.remove();
+    };
   }, []);
-  const upcomingCheckup = checkupSchedule(checkups, calendarNow, activeMemberId).today[0];
+  const upcomingCheckup = checkupSchedule(checkups, calendarNow, activeMemberId)
+    .today[0];
 
   const toggleDoseTaken = async (dose: TodayDose) => {
     if (doseActionsInFlight.current.has(dose.dose_id)) return;
     const undo = Boolean(dose.logged_at);
     doseActionsInFlight.current.add(dose.dose_id);
     setBusyDoseIds((current) => new Set(current).add(dose.dose_id));
-    setDoseActionMessage(null);
     setDoseActionError(null);
     try {
       if (undo) {
@@ -73,10 +96,11 @@ export default function TodayScreen() {
       } else {
         await logDose(dose.medicine_id, dose.time);
       }
-      setDoseActionMessage(undo ? `${dose.medicine_name} taken record undone.` : `${dose.medicine_name} marked as taken.`);
     } catch (requestError) {
       setDoseActionError(
-        requestError instanceof Error ? requestError.message : "The dose could not be saved.",
+        requestError instanceof Error
+          ? requestError.message
+          : "The dose could not be saved.",
       );
     } finally {
       doseActionsInFlight.current.delete(dose.dose_id);
@@ -90,14 +114,35 @@ export default function TodayScreen() {
 
   const totalDoses = todayDoses.length;
   const takenDoses = todayDoses.filter((dose) => dose.logged_at).length;
-  const totalProtocolSteps = todayProtocols.reduce((acc, protocol) => acc + protocol.steps.length, 0);
+  const totalProtocolSteps = todayProtocols.reduce(
+    (acc, protocol) => acc + protocol.steps.length,
+    0,
+  );
   const takenProtocolSteps = todayProtocols.reduce(
-    (acc, protocol) => acc + protocol.steps.filter((step) => step.logged_at).length,
+    (acc, protocol) =>
+      acc + protocol.steps.filter((step) => step.logged_at).length,
     0,
   );
   const total = totalDoses + totalProtocolSteps;
   const taken = takenDoses + takenProtocolSteps;
   const percent = total ? Math.round((taken / total) * 100) : 0;
+  const reducedMotion = useReduceMotion();
+  const [progress] = useState(() => new Animated.Value(percent));
+  useEffect(() => {
+    progress.stopAnimation();
+    if (reducedMotion) {
+      progress.setValue(percent);
+    } else {
+      Animated.timing(progress, {
+        toValue: percent,
+        duration: 300,
+        useNativeDriver: false,
+      }).start();
+    }
+    return () => {
+      progress.stopAnimation();
+    };
+  }, [percent, reducedMotion, progress]);
 
   const grouped = useMemo(() => {
     const map = new Map<TimeSlot, SlotItem[]>();
@@ -131,18 +176,29 @@ export default function TodayScreen() {
             <Pressable
               testID="today-upcoming-checkup"
               onPress={() => router.push("/care/checkups")}
-              style={({ pressed }) => [styles.checkupCard, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.checkupCard,
+                pressed && styles.pressed,
+              ]}
             >
               <View style={styles.checkupIcon}>
-                <Ionicons name="calendar-outline" size={22} color={colors.info} />
+                <Ionicons
+                  name="calendar-outline"
+                  size={22}
+                  color={colors.info}
+                />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.checkupEyebrow}>Today’s checkup</Text>
                 <Text style={styles.checkupTitle}>{upcomingCheckup.title}</Text>
-                <Text style={styles.checkupMeta}>{relativeCheckup(upcomingCheckup.scheduled_at, calendarNow)}</Text>
+                <Text style={styles.checkupMeta}>
+                  {relativeCheckup(upcomingCheckup.scheduled_at, calendarNow)}
+                </Text>
                 {upcomingCheckup.doctor || upcomingCheckup.location ? (
                   <Text style={styles.checkupDetails}>
-                    {[upcomingCheckup.doctor, upcomingCheckup.location].filter(Boolean).join(" · ")}
+                    {[upcomingCheckup.doctor, upcomingCheckup.location]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </Text>
                 ) : null}
               </View>
@@ -152,22 +208,33 @@ export default function TodayScreen() {
 
           <View style={styles.progressWrap}>
             <View style={styles.progressText}>
-              <Text style={styles.progressPrimary}>
+              <Text
+                style={styles.progressPrimary}
+                accessibilityLiveRegion="polite"
+              >
                 {taken} of {total} doses taken
               </Text>
               <Text style={styles.progressSecondary}>{percent}%</Text>
             </View>
             <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${percent}%` }]} />
+              <Animated.View
+                style={[
+                  styles.progressFill,
+                  {
+                    width: progress.interpolate({
+                      inputRange: [0, 100],
+                      outputRange: ["0%", "100%"],
+                    }),
+                  },
+                ]}
+              />
             </View>
           </View>
-          {doseActionMessage ? (
-            <Text accessibilityLiveRegion="polite" style={styles.actionMessage}>
-              {doseActionMessage}
-            </Text>
-          ) : null}
           {doseActionError ? (
-            <Text accessibilityLiveRegion="assertive" style={styles.actionError}>
+            <Text
+              accessibilityLiveRegion="assertive"
+              style={styles.actionError}
+            >
               {doseActionError}
             </Text>
           ) : null}
@@ -179,7 +246,9 @@ export default function TodayScreen() {
           {total === 0 ? (
             <View style={styles.dayOff}>
               <Ionicons name="sunny-outline" size={22} color={colors.muted} />
-              <Text style={styles.dayOffText}>No doses scheduled today. Enjoy the day.</Text>
+              <Text style={styles.dayOffText}>
+                No doses scheduled today. Enjoy the day.
+              </Text>
             </View>
           ) : (
             TIME_SLOTS.map((slot) => {
@@ -189,7 +258,9 @@ export default function TodayScreen() {
               return (
                 <View key={slot} style={styles.slotBlock}>
                   <View style={styles.slotHeader}>
-                    <Text style={styles.slotTitle}>{TIME_SLOT_LABEL[slot]}</Text>
+                    <Text style={styles.slotTitle}>
+                      {TIME_SLOT_LABEL[slot]}
+                    </Text>
                     <Text style={styles.slotTime}>{formatTime(slotTime)}</Text>
                   </View>
                   <View style={styles.slotList}>
@@ -205,85 +276,131 @@ export default function TodayScreen() {
                         );
                       }
                       const dose = item.dose;
-                      const status = computeDoseStatus(dose.time, dose.logged_at);
+                      const status = computeDoseStatus(
+                        dose.time,
+                        dose.logged_at,
+                      );
                       const isTaken = Boolean(dose.logged_at);
                       const eligibleForQuickAction =
-                        isTaken || status === "ready" || status === "late" || status === "missed";
+                        isTaken ||
+                        status === "ready" ||
+                        status === "late" ||
+                        status === "missed";
                       const isBusy = busyDoseIds.has(dose.dose_id);
                       return (
-                        <View
+                        <Pressable
                           key={dose.dose_id}
+                          accessible={false}
+                          onPress={() => setSelectedDose(dose)}
                           testID={`dose-row-${dose.dose_id}`}
-                          style={[styles.doseRow, stackDoseActions && styles.doseRowStacked]}
+                          style={styles.doseRow}
                         >
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel={`View ${dose.medicine_name} dose details`}
-                            accessibilityHint="Opens medicine details and dose history."
-                            testID={`dose-details-${dose.dose_id}`}
-                            onPress={() => setSelectedDose(dose)}
-                            style={({ pressed }) => [styles.doseMain, pressed && styles.pressed]}
+                          <View
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              flexDirection: stackDoseActions
+                                ? "column"
+                                : "row",
+                              alignItems: stackDoseActions
+                                ? "stretch"
+                                : "center",
+                              gap: 6,
+                            }}
                           >
-                            {dose.image_url ? (
-                              <Image
-                                accessibilityLabel={`${dose.medicine_name} photo`}
-                                source={{
-                                  uri: resolveMediaUrl(dose.image_url),
-                                  headers: authHeaders(),
-                                }}
-                                contentFit="cover"
-                                style={styles.doseImage}
-                              />
-                            ) : (
-                              <View style={styles.doseIcon}>
-                                <Ionicons name="medical" size={19} color={colors.brandPrimary} />
-                              </View>
-                            )}
-                            <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-                              <Text style={styles.doseName}>{dose.medicine_name}</Text>
-                              <Text style={styles.doseDetail}>
-                                {[dose.instructions, dose.dosage].filter(Boolean).join(" · ") || "As directed"}
-                              </Text>
-                              <View style={[styles.doseFooter, status === "locked" && styles.upcomingFooter]}>
-                                <Text style={styles.doseTime}>{formatTime(dose.time)}</Text>
-                                <StatusPill compact status={status} testID={`dose-status-${dose.dose_id}`} />
-                              </View>
-                            </View>
-                          </Pressable>
-                          <View style={styles.doseActions}>
-                            {eligibleForQuickAction ? (
-                              <Pressable
-                                accessibilityRole="button"
-                                accessibilityLabel={isTaken ? `Undo taken for ${dose.medicine_name} dose at ${formatTime(dose.time)}` : `Mark ${dose.medicine_name} dose at ${formatTime(dose.time)} as taken`}
-                                testID={`${isTaken ? "dose-undo-taken" : "dose-mark-taken"}-${dose.dose_id}`}
-                                disabled={isBusy}
-                                onPress={() => void toggleDoseTaken(dose)}
-                                style={({ pressed }) => [
-                                  styles.quickAction,
-                                  isTaken && styles.quickActionUndo,
-                                  isBusy && styles.quickActionDisabled,
-                                  pressed && !isBusy && styles.pressed,
-                                ]}
-                              >
-                                <Text style={[styles.quickActionText, isTaken && styles.quickActionUndoText]}>
-                                  {isBusy ? "Saving…" : isTaken ? "Undo taken" : "Mark as taken"}
-                                </Text>
-                              </Pressable>
-                            ) : null}
                             <Pressable
                               accessibilityRole="button"
                               accessibilityLabel={`View ${dose.medicine_name} dose details`}
-                              testID={`dose-open-details-${dose.dose_id}`}
+                              accessibilityHint="Opens medicine details and dose history."
+                              testID={`dose-details-${dose.dose_id}`}
                               onPress={() => setSelectedDose(dose)}
                               style={({ pressed }) => [
-                                styles.chevronButton,
+                                styles.doseMain,
                                 pressed && styles.pressed,
                               ]}
                             >
-                              <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+                              {dose.image_url ? (
+                                <Image
+                                  accessibilityLabel={`${dose.medicine_name} photo`}
+                                  source={{
+                                    uri: resolveMediaUrl(dose.image_url),
+                                    headers: authHeaders(),
+                                  }}
+                                  contentFit="cover"
+                                  style={styles.doseImage}
+                                />
+                              ) : (
+                                <View style={styles.doseIcon}>
+                                  <Ionicons
+                                    name="medical"
+                                    size={19}
+                                    color={colors.brandPrimary}
+                                  />
+                                </View>
+                              )}
+                              <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                                <Text style={styles.doseName}>
+                                  {dose.medicine_name}
+                                </Text>
+                                <Text style={styles.doseDetail}>
+                                  {[dose.instructions, dose.dosage]
+                                    .filter(Boolean)
+                                    .join(" · ") || "As directed"}
+                                </Text>
+                                <View
+                                  style={[
+                                    styles.doseFooter,
+                                    status === "locked" &&
+                                      styles.upcomingFooter,
+                                  ]}
+                                >
+                                  <Text style={styles.doseTime}>
+                                    {formatTime(dose.time)}
+                                  </Text>
+                                  {isTaken ? (
+                                    <Text style={styles.doseDetail}>
+                                      Taken at {doseTakenTime(dose.logged_at!)}
+                                    </Text>
+                                  ) : (
+                                    <StatusPill
+                                      dense
+                                      compact
+                                      status={status}
+                                      testID={`dose-status-${dose.dose_id}`}
+                                    />
+                                  )}
+                                </View>
+                              </View>
                             </Pressable>
+                            <View style={styles.doseActions}>
+                              {eligibleForQuickAction ? (
+                                <TodayDoseAction
+                                  loggedAt={dose.logged_at}
+                                  testID={`${isTaken ? "dose-undo-taken" : "dose-mark-taken"}-${dose.dose_id}`}
+                                  disabled={isBusy}
+                                  onToggle={() => void toggleDoseTaken(dose)}
+                                />
+                              ) : null}
+                            </View>
                           </View>
-                        </View>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={`View ${dose.medicine_name} dose details`}
+                            testID={`dose-open-details-${dose.dose_id}`}
+                            onPress={() => setSelectedDose(dose)}
+                            hitSlop={{ left: 8, right: 8 }}
+                            style={({ pressed }) => [
+                              styles.chevronButton,
+                              pressed && styles.pressed,
+                            ]}
+                          >
+                            <Ionicons
+                              name="chevron-forward"
+                              size={18}
+                              color={colors.muted}
+                            />
+                          </Pressable>
+                        </Pressable>
                       );
                     })}
                   </View>
@@ -299,7 +416,9 @@ export default function TodayScreen() {
         onClose={() => setSelectedDose(null)}
         dose={
           selectedDose
-            ? todayDoses.find((dose) => dose.dose_id === selectedDose.dose_id) ?? selectedDose
+            ? (todayDoses.find(
+                (dose) => dose.dose_id === selectedDose.dose_id,
+              ) ?? selectedDose)
             : null
         }
       />
@@ -308,7 +427,9 @@ export default function TodayScreen() {
         onClose={() => setSelectedProtocol(null)}
         protocol={
           selectedProtocol
-            ? todayProtocols.find((item) => item.protocol_id === selectedProtocol.protocol_id) ?? selectedProtocol
+            ? (todayProtocols.find(
+                (item) => item.protocol_id === selectedProtocol.protocol_id,
+              ) ?? selectedProtocol)
             : null
         }
       />
@@ -335,13 +456,35 @@ const useStyles = makeStyles((colors) =>
       alignItems: "center",
       justifyContent: "center",
     },
-    checkupEyebrow: { color: colors.muted, fontSize: 11, fontWeight: "800", letterSpacing: 1 },
-    checkupTitle: { color: colors.onSurface, fontSize: 15, fontWeight: "800", marginTop: 2 },
-    checkupMeta: { color: colors.onSurfaceSecondary, fontSize: 13, marginTop: 3 },
+    checkupEyebrow: {
+      color: colors.muted,
+      fontSize: 11,
+      fontWeight: "800",
+      letterSpacing: 1,
+    },
+    checkupTitle: {
+      color: colors.onSurface,
+      fontSize: 15,
+      fontWeight: "800",
+      marginTop: 2,
+    },
+    checkupMeta: {
+      color: colors.onSurfaceSecondary,
+      fontSize: 13,
+      marginTop: 3,
+    },
     checkupDetails: { color: colors.muted, fontSize: 12, marginTop: 1 },
     progressWrap: { gap: 10 },
-    progressText: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-    progressPrimary: { color: colors.onSurface, fontSize: 15, fontWeight: "800" },
+    progressText: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    progressPrimary: {
+      color: colors.onSurface,
+      fontSize: 15,
+      fontWeight: "800",
+    },
     progressSecondary: { color: colors.muted, fontSize: 12 },
     actionMessage: { color: colors.success, fontSize: 13, fontWeight: "700" },
     actionError: { color: colors.error, fontSize: 13, fontWeight: "700" },
@@ -351,15 +494,28 @@ const useStyles = makeStyles((colors) =>
       backgroundColor: colors.surfaceTertiary,
       overflow: "hidden",
     },
-    progressFill: { height: 8, borderRadius: 4, backgroundColor: colors.brandPrimary },
+    progressFill: {
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.brandPrimary,
+    },
     sectionHeader: { flexDirection: "row", alignItems: "center" },
     sectionTitle: { color: colors.onSurface, fontSize: 21, fontWeight: "800" },
     dayOff: { alignItems: "center", padding: 22, gap: 8 },
     dayOffText: { color: colors.muted, fontSize: 14 },
     slotBlock: { gap: 10 },
-    slotHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
+    slotHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-end",
+    },
     slotTitle: { color: colors.onSurface, fontSize: 15, fontWeight: "800" },
-    slotTime: { color: colors.brandPrimary, fontSize: 13, fontWeight: "800", letterSpacing: 0.4 },
+    slotTime: {
+      color: colors.brandPrimary,
+      fontSize: 13,
+      fontWeight: "800",
+      letterSpacing: 0.4,
+    },
     slotList: { gap: 8 },
     doseRow: {
       minHeight: 84,
@@ -390,13 +546,37 @@ const useStyles = makeStyles((colors) =>
       alignItems: "center",
       justifyContent: "center",
     },
-    doseImage: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.surfaceTertiary },
+    doseImage: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      backgroundColor: colors.surfaceTertiary,
+    },
     doseName: { color: colors.onSurface, fontSize: 15, fontWeight: "800" },
-    doseDetail: { color: colors.muted, fontSize: 12 },
-    doseFooter: { flexDirection: "column", alignItems: "flex-start", gap: 6, marginTop: 3 },
-    upcomingFooter: { flexDirection: "row", flexWrap: "wrap", alignItems: "center" },
-    doseTime: { color: colors.onSurfaceSecondary, fontSize: 12, fontWeight: "700" },
-    doseActions: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", flexShrink: 0, gap: 4 },
+    doseDetail: { color: colors.muted, fontSize: 12, lineHeight: 16 },
+    doseFooter: {
+      flexDirection: "column",
+      alignItems: "flex-start",
+      gap: 6,
+      marginTop: 3,
+    },
+    upcomingFooter: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+    },
+    doseTime: {
+      color: colors.onSurfaceSecondary,
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    doseActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      flexShrink: 0,
+      gap: 4,
+    },
     quickAction: {
       width: 108,
       minHeight: 48,
@@ -416,7 +596,7 @@ const useStyles = makeStyles((colors) =>
     quickActionUndo: { backgroundColor: colors.brandTertiary },
     quickActionUndoText: { color: colors.brandPrimary },
     chevronButton: {
-      width: 44,
+      width: 28,
       height: 44,
       borderRadius: 22,
       alignItems: "center",

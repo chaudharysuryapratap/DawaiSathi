@@ -1,8 +1,9 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { authHeaders, resolveMediaUrl } from "@/src/api";
 import { BottomSheet } from "@/src/components/bottom-sheet";
@@ -110,7 +111,7 @@ export function MedicineDetailSheet({ visible, onClose, dose: selectedDose }: Pr
         />
       ) : null}
       <View style={styles.secondaryRow}>
-        <Pressable
+        <PressableScale
           testID="detail-edit"
           onPress={() => {
             onClose();
@@ -120,8 +121,8 @@ export function MedicineDetailSheet({ visible, onClose, dose: selectedDose }: Pr
         >
           <Ionicons name="pencil" size={16} color={colors.brandPrimary} />
           <Text style={styles.secondaryText}>Edit medicine</Text>
-        </Pressable>
-        <Pressable
+        </PressableScale>
+        <PressableScale
           testID="detail-delete"
           onPress={remove}
           disabled={busy}
@@ -129,7 +130,7 @@ export function MedicineDetailSheet({ visible, onClose, dose: selectedDose }: Pr
         >
           <Ionicons name="trash-outline" size={16} color={colors.error} />
           <Text style={styles.dangerText}>Delete</Text>
-        </Pressable>
+        </PressableScale>
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </>
@@ -193,9 +194,9 @@ export function MedicineDetailSheet({ visible, onClose, dose: selectedDose }: Pr
               <View key={entry.id} style={styles.historyRow}>
                 <Text style={styles.historyDate}>{formatIsoDate(entry.logged_at, { day: "numeric", month: "short" })}</Text>
                 <View style={styles.historyDot}>
-                  <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                  <Ionicons name={entry.status === "undone" ? "arrow-undo" : "checkmark"} size={14} color="#FFFFFF" />
                 </View>
-                <Text style={styles.historyTime}>{formatTime(entry.time)}</Text>
+                <Text style={styles.historyTime}>{entry.status === "undone" ? `Taken ${new Date(entry.logged_at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })} · Undone ${new Date(entry.undone_at!).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}` : formatTime(entry.time)}</Text>
               </View>
             ))}
           </View>

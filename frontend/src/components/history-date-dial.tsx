@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, FlatList, Pressable, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import { press } from "@/src/utils/haptics";
 import Svg, { Circle } from "react-native-svg";
 import { useTheme } from "@/src/theme";
 
@@ -65,6 +66,7 @@ export function HistoryDateDial({ taken, missed, onSelectDate }: { taken: Record
         const inputRange = [(index - 1) * stride, index * stride, (index + 1) * stride];
         return <Animated.View style={{ opacity: scrollX.interpolate({ inputRange, outputRange: [0.78, 1, 0.78], extrapolate: "clamp" }), transform: [{ scale: scrollX.interpolate({ inputRange, outputRange: [0.95, 1, 0.95], extrapolate: "clamp" }) }] }}><Pressable testID={"history-date-" + key} accessibilityRole="button" accessibilityState={{ selected: active }}
           accessibilityLabel={item.toDateString() + (key === localDayKey(today) ? ", Today" : "") + (future ? ", Upcoming" : total ? ", " + completed + " taken out of " + total + " recorded events" : ", No recorded events")}
+          onPressIn={press}
           onPress={() => { setSelected(key); onSelectDate?.(key); list.current?.scrollToOffset({ offset: Math.min(index * stride, Math.max(0, dates.length * stride + (width - stride) / 2 + 4 - width)), animated: true }); }}
           style={{ width: cardWidth, marginHorizontal: 4, minHeight: 128, borderRadius: 14, borderWidth: 1, borderColor: active ? colors.brandPrimary : colors.divider, backgroundColor: active ? colors.brandTertiary : colors.surface, alignItems: "center", paddingVertical: 8, gap: 4 }}>
           <Text style={{ color: active ? colors.onBrandTertiary : colors.muted, fontSize: 12 }}>{item.toLocaleDateString("en-US", { weekday: "short" })}</Text>

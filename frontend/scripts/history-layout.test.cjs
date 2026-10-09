@@ -5,21 +5,22 @@ const path = require("node:path");
 const Module = require("node:module");
 const test = require("node:test");
 const ts = require("typescript");
-function harness({ empty = false } = {}) {
+function harness({ empty = false, undone = false } = {}) {
   const states = []; let cursor = 0;
   const now = new Date(), date = [now.getFullYear(), String(now.getMonth()+1).padStart(2,"0"), String(now.getDate()).padStart(2,"0")].join("-");
   const mocks = {
+    "@/src/components/ui/PressableScale": { __esModule: true, default: "button" },
     react: { useState: initial => { const i=cursor++; if (!(i in states)) states[i]=typeof initial==="function"?initial():initial; return [states[i], v=>{states[i]=typeof v==="function"?v(states[i]):v;}]; }, useMemo: fn=>fn() },
-    "react-native": { Pressable:"button", ScrollView:"scroll", Text:"text", View:"view", StyleSheet:{create:v=>v,hairlineWidth:1} },
-    "@expo/vector-icons": {Ionicons:"icon"},
+    "react-native": { Image:"image", Pressable:"button", ScrollView:"scroll", Text:"text", View:"view", StyleSheet:{create:v=>v,hairlineWidth:1} },
+    "@expo/vector-icons": {Ionicons:"icon",MaterialCommunityIcons:"icon"},
     "@/src/components/history-date-dial": {HistoryDateDial:"date-dial",localDayKey:()=>date},
     "@/src/theme": {useTheme:()=>({colors:{}}),makeStyles:fn=>()=>fn({brandTertiary:"existing-light-teal",surfaceSecondary:"existing-light-surface"})},
     "@/src/components/dawai-ui": {ScreenShell:"screen",LoadingState:"loading",ErrorState:"error"},
     "@/src/dose-status": {formatIsoDate:v=>v,formatTime:v=>v},
     "@/src/data-context": {useData:()=>({
-      history:empty?[]:[{id:"dose",medicine_id:"med",medicine_name:"Test medicine",dosage:"1 tablet",time:"08:00",logged_at:`${date}T08:00:00`,local_date:date,member_id:"member"}],
+      history:empty?[]:[{id:"dose",medicine_id:"med",medicine_name:"Test medicine",dosage:"1 tablet",time:"08:00",logged_at:`${date}T08:00:00`,local_date:date,member_id:"member"},...(undone?[{id:"undo-dose",medicine_id:"med",medicine_name:"Undone medicine",time:"08:00",logged_at:`${date}T08:00:00`,undone_at:`${date}T09:10:00`,local_date:date,status:"undone"}]:[])],
       protocolHistory:[],missedDoseHistory:empty?[]:[{id:"miss",medicine_name:"Missed medicine",dosage:"1 tablet",time:"09:00",local_date:date,member_id:"member",source_type:"medicine"}],
-      medicines:[],protocols:[],members:[{id:"member",name:"Test member"}],activeMember:null,activeMemberId:null,setActiveMember:()=>{},loading:false,error:null,refresh:()=>{}
+      medicines:[{id:"med",instructions:"After food",image_url:"medicine-photo.jpg"}],protocols:[],members:[{id:"member",name:"Test member"}],activeMember:null,activeMemberId:null,setActiveMember:()=>{},loading:false,error:null,refresh:()=>{}
     })},
   };
   const filename=path.resolve(__dirname,"../app/(tabs)/history.tsx"), loaded=new Module(filename,module);
@@ -30,6 +31,35 @@ function harness({ empty = false } = {}) {
 const nodes=n=>!n||typeof n!=="object"?[]:Array.isArray(n)?n.flatMap(nodes):[n,...nodes(n.props?.children)];
 const find=(tree,id)=>nodes(tree).find(n=>n.props?.testID===id);
 const has=(tree,value)=>nodes(tree).some(n=>n.props?.children===value);
+test("undone entries are hidden without increasing adherence or visible counts",()=>{
+  const app=harness({undone:true}),tree=app.tree();
+  assert.ok(has(tree,"50%"));assert.ok(!has(tree,"Undone"));assert.ok(!has(tree,"Undone medicine"));
+  assert.equal(find(tree,"history-expanded-dose-undo-dose"),undefined);
+  assert.equal(find(tree,"history-details-dose-undo-dose"),undefined);
+  assert.equal(find(tree,"history-filter-status-all").props.label,"All (2)");
+  assert.equal(find(tree,"history-filter-status-taken").props.label,"Taken (1)");
+  find(tree,"history-filter-status-taken").props.onPress();
+  assert.ok(!has(app.tree(),"Undone medicine"));
+});
+test("compact medicine rows reveal dosage and instructions only through their chevron",()=>{
+  const app=harness(),tree=app.tree(),row=find(tree,"history-record-dose");
+  assert.ok(has(row,"Test medicine"));assert.ok(!has(row,"Test member"));
+  assert.ok(nodes(row).some(n=>typeof n.props?.children==="string" && n.props.children.startsWith("Taken at ")));
+  assert.ok(!nodes(row).some(n=>Array.isArray(n.props?.children) && n.props.children[0]==="Scheduled "));
+  assert.ok(nodes(row).find(n=>n.type==="image"));
+  assert.equal(find(tree,"history-expanded-dose-dose"),undefined);
+  const toggle=find(tree,"history-details-dose-dose");
+  assert.equal(toggle.props.accessibilityState.expanded,false);
+  toggle.props.onPress();
+  const expanded=app.tree(),details=find(expanded,"history-expanded-dose-dose");
+  assert.ok(details);
+  assert.ok(has(details,"Test member"));
+  assert.ok(nodes(details).some(n=>Array.isArray(n.props?.children) && n.props.children[0]==="Scheduled " && n.props.children[1]==="08:00"));
+  assert.ok(nodes(details).some(n=>Array.isArray(n.props?.children) && n.props.children[0]==="Dose: " && n.props.children[1]==="1 tablet"));
+  assert.ok(nodes(details).some(n=>Array.isArray(n.props?.children) && n.props.children[0]==="Current instructions: " && n.props.children[1]==="After food"));
+  find(expanded,"history-details-dose-dose").props.onPress();
+  assert.equal(find(app.tree(),"history-expanded-dose-dose"),undefined);
+});
 test("adherence uses recorded Taken and Missed events without a Skipped state",()=>{
   const app=harness(),tree=app.tree();
   assert.ok(has(tree,"50%")); assert.ok(!has(tree,"Skipped"));

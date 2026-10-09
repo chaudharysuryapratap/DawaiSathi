@@ -1,6 +1,7 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef, type ReactNode } from "react";
-import { Pressable, StyleSheet, Text } from "react-native";
+import { StyleSheet, Text } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Swipeable, { type SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 
@@ -38,7 +39,7 @@ export function SwipeDeleteRow({ children, open, disabled, label = "Delete", tes
       onSwipeableWillOpen={onOpen}
       onSwipeableClose={onClose}
       containerStyle={styles.container}
-      renderRightActions={() => <Pressable
+      renderRightActions={() => <PressableScale
         testID={`${testID}-delete`}
         accessibilityRole="button"
         accessibilityLabel={label}
@@ -49,7 +50,7 @@ export function SwipeDeleteRow({ children, open, disabled, label = "Delete", tes
         importantForAccessibility={open ? "yes" : "no-hide-descendants"}
         onPress={() => { swipe.current?.close(); onRequestDelete(); }}
         style={styles.action}
-      ><Ionicons name={label === "Leave" ? "exit-outline" : "trash-outline"} size={22} color="#FFFFFF" /><Text style={styles.label}>{label}</Text></Pressable>}
+      ><Ionicons name={label === "Leave" ? "exit-outline" : "trash-outline"} size={22} color="#FFFFFF" /><Text style={styles.label}>{label}</Text></PressableScale>}
     >{children}</Swipeable>
   </GestureHandlerRootView>;
 }

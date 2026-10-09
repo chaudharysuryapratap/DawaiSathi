@@ -1,3 +1,4 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -129,7 +130,7 @@ export function FamilyGroupSelector({ accessOnly = false }: { accessOnly?: boole
     {(["join", "create"] as const).map(kind => <LinearGradient key={kind} colors={kind === "join" ? ["#F7FCFA", "#E3F4EC"] : ["#FFFCF7", "#FFF0DC"]} style={[styles.featureCard, kind === "join" ? styles.joinCard : styles.newCard, stackedCards && styles.stackedCard]}>
       <View style={styles.featureContent}><Text accessibilityRole="header" style={styles.featureTitle}>{kind === "join" ? "Join a family" : "Create a family"}</Text><Text style={styles.featureDetail}>{kind === "join" ? "Enter the family code or invitation shared with you." : "Give a name to your family group."}</Text></View>
       <View style={styles.cardFooter}><Image source={kind === "join" ? require("../../assets/images/family-join.svg") : require("../../assets/images/family-create.svg")} style={styles.cardArt} contentFit="contain" contentPosition="top" accessible={false} />
-        <Pressable accessibilityRole="button" accessibilityLabel={kind === "join" ? "Join family" : "Create family"} accessibilityState={{ disabled: busy }} onPress={() => { setForm(kind); setOpen(true); setOpenRow(null); setError(null); }} disabled={busy} testID={kind === "join" ? "family-invitation-accept" : "family-group-create"} style={({ pressed }) => [styles.featureButton, kind === "join" ? styles.joinButton : styles.createButton, pressed && styles.pressed]}><Text style={styles.buttonLabel}>{kind === "join" ? "Join family" : "Create family"}</Text><Ionicons name="arrow-forward" size={22} color="#FFFFFF" /></Pressable>
+        <PressableScale accessibilityRole="button" accessibilityLabel={kind === "join" ? "Join family" : "Create family"} accessibilityState={{ disabled: busy }} onPress={() => { setForm(kind); setOpen(true); setOpenRow(null); setError(null); }} disabled={busy} testID={kind === "join" ? "family-invitation-accept" : "family-group-create"} style={({ pressed }) => [styles.featureButton, kind === "join" ? styles.joinButton : styles.createButton, pressed && styles.pressed]}><Text style={styles.buttonLabel}>{kind === "join" ? "Join family" : "Create family"}</Text><Ionicons name="arrow-forward" size={22} color="#FFFFFF" /></PressableScale>
       </View>
     </LinearGradient>)}
   </View>;
@@ -178,13 +179,13 @@ export function FamilyGroupSelector({ accessOnly = false }: { accessOnly?: boole
         /> : scanning ? <FamilyQrScanner onScan={code => { setJoinToken(code); setJoinError(null); setScanning(false); }} onCancel={() => setScanning(false)} /> : form ? <View style={{ gap: 18 }}>
           <View style={[styles.formInputBar, inputFocused && { borderColor: colors.brandPrimary, boxShadow: "0 0 0 2px rgba(19,134,125,0.12)" }]}>
           <TextInput focusOutline={false} onFocus={() => setInputFocused(true)} onBlur={() => setInputFocused(false)} accessibilityLabel={form === "create" ? "New family group name" : "Family invitation token"} testID={form === "create" ? "family-group-name-input" : "family-invitation-token"} value={form === "create" ? newName : joinToken} onChangeText={value => { if (form === "create") { setNewName(value); setNameError(null); } else { setJoinToken(value); setJoinError(null); } }} placeholder={form === "create" ? "e.g. Sharma" : "Family code or invitation"} placeholderTextColor={colors.muted} autoCapitalize={form === "create" ? "words" : "none"} autoCorrect={false} style={[styles.input, { borderWidth: 0 }]} />
-          {form === "join" && <Pressable accessibilityRole="button" accessibilityLabel="Scan family QR code" testID="family-scan-qr" onPress={() => setScanning(true)} style={styles.mini}><Ionicons name="scan-outline" size={24} color={colors.brandPrimary} /></Pressable>}
+          {form === "join" && <PressableScale scaleTo={0.88} hitSlop={14} accessibilityRole="button" accessibilityLabel="Scan family QR code" testID="family-scan-qr" onPress={() => setScanning(true)} style={styles.mini}><Ionicons name="scan-outline" size={24} color={colors.brandPrimary} /></PressableScale>}
           </View>
           {(form === "create" ? nameError : joinError) ? <Text accessibilityRole="alert" style={styles.fieldError}>{form === "create" ? nameError : joinError}</Text> : null}
-          {form === "create" && <><Text style={styles.detail}>Your role in this group</Text><View style={{ flexDirection: "row", gap: 10 }}>{(["member", "care_taker"] as const).map(value => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: role === value }} onPress={() => setRole(value)} style={[styles.roleButton, role === value && styles.roleSelected]}><Text style={styles.roleLabel}>{value === "member" ? "Member" : "Caretaker"}</Text></Pressable>)}</View></>}
+          {form === "create" && <><Text style={styles.detail}>Your role in this group</Text><View style={{ flexDirection: "row", gap: 10 }}>{(["member", "care_taker"] as const).map(value => <PressableScale key={value} accessibilityRole="button" accessibilityState={{ selected: role === value }} onPress={() => setRole(value)} style={[styles.roleButton, role === value && styles.roleSelected]}><Text style={styles.roleLabel}>{value === "member" ? "Member" : "Caretaker"}</Text></PressableScale>)}</View></>}
           {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-          <Pressable accessibilityRole="button" disabled={busy} testID={form === "create" ? "family-create-submit" : "family-join-submit"} onPress={form === "create" ? submitCreate : submitJoin} style={[styles.formButton, busy && { opacity: 0.6 }]}><Text style={styles.formButtonLabel}>{busy ? "Please wait…" : form === "create" ? "Create Family" : "Join Family"}</Text></Pressable>
-          <Pressable accessibilityRole="button" disabled={busy} onPress={() => { setForm(null); if (accessOnly) setOpen(false); setError(null); }} style={styles.roleButton}><Text style={styles.detail}>Cancel</Text></Pressable>
+          <PressableScale accessibilityRole="button" disabled={busy} testID={form === "create" ? "family-create-submit" : "family-join-submit"} onPress={form === "create" ? submitCreate : submitJoin} style={[styles.formButton, busy && { opacity: 0.6 }]}><Text style={styles.formButtonLabel}>{busy ? "Please wait…" : form === "create" ? "Create Family" : "Join Family"}</Text></PressableScale>
+          <PressableScale accessibilityRole="button" disabled={busy} onPress={() => { setForm(null); if (accessOnly) setOpen(false); setError(null); }} style={styles.roleButton}><Text style={styles.detail}>Cancel</Text></PressableScale>
         </View> : <>
         <View style={styles.list}>
           {familyGroups.map((group) => {
@@ -197,7 +198,7 @@ export function FamilyGroupSelector({ accessOnly = false }: { accessOnly?: boole
                   onOpen={() => setOpenRow(group.id)} onClose={() => setOpenRow(current => current === group.id ? null : current)}
                   onRequestDelete={() => { setOpenRow(null); setError(null); setPendingDelete(group); }}>
                 <View style={[styles.row, selected && styles.rowSelected]}>
-                  <Pressable
+                  <PressableScale
                   testID={`family-group-${group.id}`}
                   accessibilityRole="button"
                   accessibilityLabel={`Switch to ${group.name}`}
@@ -230,19 +231,19 @@ export function FamilyGroupSelector({ accessOnly = false }: { accessOnly?: boole
                       {group.member_count} {group.member_count === 1 ? "member" : "members"}
                     </Text>
                   </View>
-                  </Pressable>
+                  </PressableScale>
 
                 {editing ? (
                   <View style={styles.actions}>
-                    <Pressable accessibilityRole="button" accessibilityLabel="Save family name" onPress={submitRename} disabled={busy} style={({ pressed }) => [styles.mini, pressed && styles.pressed]}>
+                    <PressableScale scaleTo={0.88} hitSlop={14} accessibilityRole="button" accessibilityLabel="Save family name" onPress={submitRename} disabled={busy} style={({ pressed }) => [styles.mini, pressed && styles.pressed]}>
                       <Ionicons name="checkmark" size={16} color={colors.brandPrimary} />
-                    </Pressable>
-                    <Pressable accessibilityRole="button" accessibilityLabel="Cancel rename" onPress={() => { setEditingId(null); setRenameValue(""); }} style={({ pressed }) => [styles.mini, pressed && styles.pressed]}>
+                    </PressableScale>
+                    <PressableScale scaleTo={0.88} hitSlop={14} accessibilityRole="button" accessibilityLabel="Cancel rename" onPress={() => { setEditingId(null); setRenameValue(""); }} style={({ pressed }) => [styles.mini, pressed && styles.pressed]}>
                       <Ionicons name="close" size={16} color={colors.onSurfaceSecondary} />
-                    </Pressable>
+                    </PressableScale>
                   </View>
                 ) : group.owner_user_id === user?.id ? (
-                  <Pressable
+                  <PressableScale scaleTo={0.88} hitSlop={14}
                     testID={`family-group-edit-${group.id}`}
                     accessibilityRole="button"
                     accessibilityLabel={`Rename ${group.name}`}
@@ -253,10 +254,10 @@ export function FamilyGroupSelector({ accessOnly = false }: { accessOnly?: boole
                     style={({ pressed }) => [styles.mini, pressed && styles.pressed]}
                   >
                     <Ionicons name="pencil" size={20} color="#596565" />
-                  </Pressable>
+                  </PressableScale>
                 ) : null}
                 {group.owner_user_id === user?.id && !editing ? (
-                  <Pressable
+                  <PressableScale scaleTo={0.88} hitSlop={14}
                     accessibilityRole="button"
                     accessibilityLabel={`Invite someone to ${group.name}`}
                     testID={`family-group-invite-${group.id}`}
@@ -267,9 +268,9 @@ export function FamilyGroupSelector({ accessOnly = false }: { accessOnly?: boole
                     style={({ pressed }) => [styles.mini, pressed && styles.pressed]}
                   >
                     <Ionicons name="person-add-outline" size={22} color="#13867D" />
-                  </Pressable>
+                  </PressableScale>
                 ) : null}
-                {!editing && <Pressable accessibilityRole="button" accessibilityLabel={`Removal options for ${group.name}`} testID={`family-options-${group.id}`} disabled={busy} onPress={() => setOpenRow(current => current === group.id ? null : group.id)} style={styles.mini}><Ionicons name="ellipsis-horizontal" size={20} color={colors.onSurfaceSecondary} /></Pressable>}
+                {!editing && <PressableScale scaleTo={0.88} hitSlop={14} accessibilityRole="button" accessibilityLabel={`Removal options for ${group.name}`} testID={`family-options-${group.id}`} disabled={busy} onPress={() => setOpenRow(current => current === group.id ? null : group.id)} style={styles.mini}><Ionicons name="ellipsis-horizontal" size={20} color={colors.onSurfaceSecondary} /></PressableScale>}
                 </View>
                 </SwipeDeleteRow>
               </View>

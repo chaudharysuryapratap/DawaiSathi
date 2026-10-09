@@ -1,3 +1,4 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
@@ -69,7 +70,7 @@ export default function MedicinesScreen() {
 
         <View style={styles.tabs}>
           {(["active", "archived"] as const).map((option) => (
-            <Pressable
+            <PressableScale
               key={option}
               onPress={() => setTab(option)}
               testID={`medicine-tab-${option}`}
@@ -78,7 +79,7 @@ export default function MedicinesScreen() {
               <Text style={[styles.tabText, tab === option && styles.tabTextActive]}>
                 {option === "active" ? `Active · ${medicines.length}` : `Archived · ${archivedMedicines.length}`}
               </Text>
-            </Pressable>
+            </PressableScale>
           ))}
         </View>
 
@@ -116,23 +117,23 @@ export default function MedicinesScreen() {
                   </View>
                   <View style={styles.cardActions}>
                     {tab === "active" ? (
-                      <Pressable
+                      <PressableScale
                         onPress={() => setRefillFor(medicine)}
                         style={({ pressed }) => [styles.smallButton, pressed && styles.pressed]}
                         testID={`medicine-refill-${medicine.id}`}
                       >
                         <Ionicons name="reload-outline" size={14} color={colors.brandPrimary} />
                         <Text style={styles.smallButtonText}>Refill</Text>
-                      </Pressable>
+                      </PressableScale>
                     ) : (
-                      <Pressable
+                      <PressableScale
                         onPress={() => restoreMedicine(medicine.id)}
                         style={({ pressed }) => [styles.smallButton, pressed && styles.pressed]}
                         testID={`medicine-restore-${medicine.id}`}
                       >
                         <Ionicons name="return-up-back-outline" size={14} color={colors.brandPrimary} />
                         <Text style={styles.smallButtonText}>Restore</Text>
-                      </Pressable>
+                      </PressableScale>
                     )}
                     <Ionicons name="chevron-forward" size={18} color={colors.muted} />
                   </View>
@@ -156,12 +157,12 @@ export default function MedicinesScreen() {
             />
             <View style={styles.refillActions}>
               <PrimaryButton label="Confirm refill" onPress={submitRefill} testID="refill-confirm" />
-              <Pressable
+              <PressableScale
                 onPress={() => { setRefillFor(null); setRefillQuantity(""); }}
                 style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
               >
                 <Text style={styles.cancelText}>Cancel</Text>
-              </Pressable>
+              </PressableScale>
             </View>
           </View>
         ) : null}

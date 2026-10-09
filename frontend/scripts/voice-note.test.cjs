@@ -12,6 +12,7 @@ function harness(initialUrl = "") {
   const recorder = { uri: "file:///recording.m4a", isRecording: false, prepareToRecordAsync: async () => calls.push("prepare"), record: () => { calls.push("record"); recorder.isRecording = true; }, stop: async () => { calls.push("stop"); recorder.isRecording = false; } };
   const player = { pause: () => calls.push("pause"), play: () => calls.push("play"), seekTo: async () => {} };
   const mocks = {
+    "@/src/components/ui/PressableScale": { __esModule: true, default: "button" },
     react: { useEffect: () => {}, useRef(initial) { const i = cursor++; if (!(i in states)) states[i] = { current: initial }; return states[i]; }, useState(initial) { const i = cursor++; if (!(i in states)) states[i] = typeof initial === "function" ? initial() : initial; return [states[i], value => { states[i] = typeof value === "function" ? value(states[i]) : value; }]; } },
     "react-native": { Platform: { OS: "android" }, StyleSheet: { create: x => x }, View: "view", Text: "text", Pressable: "button", AppState: { addEventListener: () => ({ remove() {} }) } },
     "@expo/vector-icons": { Ionicons: "icon" },

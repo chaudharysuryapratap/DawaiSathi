@@ -1,3 +1,4 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { Ionicons } from "@expo/vector-icons";
 import { useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -114,7 +115,7 @@ export function MemberSelector() {
               <View style={[styles.row, active && styles.rowSelected]}
                 onTouchStart={event => { rowTouch.current = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY, moved: false }; }}
                 onTouchMove={event => { if (Math.abs(event.nativeEvent.pageX - rowTouch.current.x) > 8 || Math.abs(event.nativeEvent.pageY - rowTouch.current.y) > 8) rowTouch.current.moved = true; }}>
-                <Pressable
+                <PressableScale
                   testID={`member-${member.id}`}
                   accessibilityRole="button"
                   accessibilityLabel={`Select ${member.name}`}
@@ -148,26 +149,26 @@ export function MemberSelector() {
                     )}
                     <Text style={styles.role}>{member.is_primary ? "Primary member" : member.role === "care_taker" ? "Caretaker" : "Member"}</Text>
                   </View>
-                </Pressable>
+                </PressableScale>
                 <View style={styles.rowActions}>
                   {editing ? (
                     <>
-                      <Pressable onPress={submitRename} testID={`member-save-${member.id}`} style={({ pressed }) => [styles.mini, pressed && styles.pressed]}>
+                      <PressableScale scaleTo={0.88} hitSlop={14} onPress={submitRename} testID={`member-save-${member.id}`} style={({ pressed }) => [styles.mini, pressed && styles.pressed]}>
                         <Ionicons name="checkmark" size={16} color={colors.brandPrimary} />
-                      </Pressable>
-                      <Pressable onPress={() => { setRenameId(null); setRenameValue(""); }} style={({ pressed }) => [styles.mini, pressed && styles.pressed]}>
+                      </PressableScale>
+                      <PressableScale scaleTo={0.88} hitSlop={14} onPress={() => { setRenameId(null); setRenameValue(""); }} style={({ pressed }) => [styles.mini, pressed && styles.pressed]}>
                         <Ionicons name="close" size={16} color={colors.onSurfaceSecondary} />
-                      </Pressable>
+                      </PressableScale>
                     </>
                   ) : ownsFamily ? (
                     <>
-                      <Pressable onPress={() => { setRenameId(member.id); setRenameValue(member.name); }} testID={`member-edit-${member.id}`} style={({ pressed }) => [styles.mini, pressed && styles.pressed]}>
+                      <PressableScale scaleTo={0.88} hitSlop={14} onPress={() => { setRenameId(member.id); setRenameValue(member.name); }} testID={`member-edit-${member.id}`} style={({ pressed }) => [styles.mini, pressed && styles.pressed]}>
                         <Ionicons name="pencil" size={22} color={colors.onSurfaceSecondary} />
-                      </Pressable>
+                      </PressableScale>
                       {!member.is_primary ? (
-                        <Pressable accessibilityRole="button" accessibilityLabel={`Removal options for ${member.name}`} disabled={busy} onPress={() => setOpenRow(current => current === member.id ? null : member.id)} testID={`member-options-${member.id}`} style={({ pressed }) => [styles.mini, pressed && styles.pressed]}>
+                        <PressableScale scaleTo={0.88} hitSlop={14} accessibilityRole="button" accessibilityLabel={`Removal options for ${member.name}`} disabled={busy} onPress={() => setOpenRow(current => current === member.id ? null : member.id)} testID={`member-options-${member.id}`} style={({ pressed }) => [styles.mini, pressed && styles.pressed]}>
                           <Ionicons name="ellipsis-horizontal" size={20} color={colors.onSurfaceSecondary} />
-                        </Pressable>
+                        </PressableScale>
                       ) : null}
                     </>
                   ) : null}
@@ -181,9 +182,9 @@ export function MemberSelector() {
           <Image source={require("../../assets/images/member-invite.svg")} style={styles.inviteArt} contentFit="cover" accessible={false} />
           <Text style={styles.cardTitle}>Add family member</Text>
           <Text style={styles.cardDescription}>Add someone you care for to this family group.</Text>
-          <Pressable accessibilityRole="button" disabled={!activeFamilyGroup || activeFamilyGroup.owner_user_id !== user?.id} onPress={() => { setInviting(true); }} testID="member-invite" style={({ pressed }) => [styles.inviteButton, pressed && styles.pressed, activeFamilyGroup?.owner_user_id !== user?.id && { opacity: 0.5 }]}>
+          <PressableScale accessibilityRole="button" disabled={!activeFamilyGroup || activeFamilyGroup.owner_user_id !== user?.id} onPress={() => { setInviting(true); }} testID="member-invite" style={({ pressed }) => [styles.inviteButton, pressed && styles.pressed, activeFamilyGroup?.owner_user_id !== user?.id && { opacity: 0.5 }]}>
             <Text style={styles.inviteLabel}>Invite member</Text><Ionicons name="add" size={26} color={colors.onBrandPrimary} />
-          </Pressable>
+          </PressableScale>
           {activeFamilyGroup?.owner_user_id !== user?.id && <Text style={styles.role}>Only the family owner can invite accounts.</Text>}
         </View>
         {error ? <Text style={styles.error}>{error}</Text> : null}

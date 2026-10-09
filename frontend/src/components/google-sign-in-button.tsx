@@ -1,7 +1,8 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { useState } from "react";
 import Constants, { ExecutionEnvironment } from "expo-constants";
 import { Image } from "expo-image";
-import { Pressable, Text } from "react-native";
+import { Text } from "react-native";
 
 import { makeStyles } from "@/src/theme";
 
@@ -41,10 +42,10 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: GoogleBu
     }
   };
   return (
-    <Pressable testID="google-provider-sign-in" accessibilityRole="button" disabled={busy || disabled} onPress={() => void signIn()} style={styles.button}>
+    <PressableScale testID="google-provider-sign-in" accessibilityRole="button" disabled={busy || disabled} onPress={() => void signIn()} style={styles.button}>
       <Image source={require("../../assets/images/google-mark.svg")} style={styles.mark} />
       <Text style={styles.label}>{busy ? "Connecting…" : "Continue with Google"}</Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 

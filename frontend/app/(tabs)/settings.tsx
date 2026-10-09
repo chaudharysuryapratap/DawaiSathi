@@ -1,295 +1,113 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
-
-import { AppHeader } from "@/src/components/app-header";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAudioPlayer } from "expo-audio";
+import { useRouter } from "expo-router";
+import { useEffect, useRef, useState } from "react";
+import { Linking, Text, View } from "react-native";
 import { useAuth } from "@/src/auth-context";
-import { LoadingState, ScreenShell } from "@/src/components/dawai-ui";
 import { api } from "@/src/api";
-import { makeStyles, useTheme } from "@/src/theme";
+import { ScreenShell } from "@/src/components/dawai-ui";
+import { BottomSheet } from "@/src/components/bottom-sheet";
+import { SettingsButton, SettingsGroup, SettingsRow, SettingsToggle, settingsStyles as styles } from "@/src/components/settings-ui";
+import PressableScale from "@/src/components/ui/PressableScale";
 import type { NotificationPreference } from "@/src/types";
-
-const defaults: NotificationPreference = {
-  medicine_reminders: true,
-  checkup_reminders: true,
-  reminder_sound: true,
-  voice_reminders: false,
-  push_enabled: false,
-  whatsapp_linked: false,
-  telegram_linked: false,
-};
-
-function Row({
-  icon,
-  title,
-  subtitle,
-  children,
-  onPress,
-  testID,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  subtitle?: string;
-  children?: React.ReactNode;
-  onPress?: () => void;
-  testID?: string;
-}) {
-  const { colors } = useTheme();
-  const styles = useStyles();
-  return (
-    <Pressable
-      disabled={!onPress}
-      onPress={onPress}
-      testID={testID}
-      style={({ pressed }) => [styles.row, pressed && onPress ? styles.pressed : null]}
-    >
-      <View style={styles.rowIcon}>
-        <Ionicons name={icon} size={19} color={colors.brandPrimary} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.rowTitle}>{title}</Text>
-        {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
-      </View>
-      {children ?? <Ionicons name="chevron-forward" size={18} color={colors.muted} />}
-    </Pressable>
-  );
-}
-
+import { setHapticsEnabled, useHapticsEnabled } from "@/src/utils/haptic-preference";
+import { setTextSize, useTextSize, type TextSize } from "@/src/utils/text-size";
+import { press } from "@/src/utils/haptics";
+const defaults: NotificationPreference = { medicine_reminders: true, checkup_reminders: true, eye_drop_reminders: true, reminder_sound: true, voice_reminders: false, push_enabled: false, whatsapp_linked: false, telegram_linked: false };
+const sounds = [
+    { name: "Gentle", source: require("../../assets/sounds/gentle.wav") },
+    { name: "Chime", source: require("../../assets/sounds/chime.wav") },
+    { name: "Bell", source: require("../../assets/sounds/bell.wav") },
+    { name: "Soft", source: require("../../assets/sounds/soft.wav") },
+];
 export default function SettingsScreen() {
-  const { colors } = useTheme();
-  const styles = useStyles();
-  const { user, logout } = useAuth();
-  const [preferences, setPreferences] = useState<NotificationPreference>(defaults);
-  const [loading, setLoading] = useState(true);
-  const [authActionError, setAuthActionError] = useState<string | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const remote = await api.notificationPreferences();
-        setPreferences(remote);
-      } catch {
-        // keep defaults if the request fails
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  const update = async <K extends keyof NotificationPreference>(key: K, value: NotificationPreference[K]) => {
-    const next = { ...preferences, [key]: value };
-    setPreferences(next);
-    try {
-      await api.saveNotificationPreferences(next);
-    } catch {
-      // ignore save failures in preview
+    const router = useRouter();
+    const { user, logout } = useAuth();
+    const hapticFeedback = useHapticsEnabled();
+    const textSize = useTextSize();
+    const [preferences, setPreferences] = useState(defaults);
+    const current = useRef(defaults);
+    const revision = useRef(0);
+    const saveQueue = useRef(Promise.resolve());
+    const confirmed = useRef(defaults);
+    const [ready, setReady] = useState(false);
+    const [error, setError] = useState("");
+    const [sheet, setSheet] = useState<"sound" | "text" | "telegram" | "logout" | null>(null);
+    const [sound, setSound] = useState("Gentle");
+    const [busy, setBusy] = useState(false);
+    const player = useAudioPlayer(null);
+    const localKey = `dawaisathi.reminder-audio:${user?.id ?? ""}`;
+    useEffect(() => {
+        let active = true;
+        void api.notificationPreferences().then(value => { if (active) {
+            current.current = value;
+            confirmed.current = value;
+            setPreferences(value);
+            setReady(true);
+        } }).catch(() => { if (active)
+            setError("Could not load preferences. Reopen Settings to try again."); });
+        void AsyncStorage.getItem(localKey).then(value => { if (!active || !value)
+            return; const saved = JSON.parse(value); if (sounds.some(s => s.name === saved.sound))
+            setSound(saved.sound); }).catch(() => { });
+        return () => { active = false; player.pause(); };
+    }, [localKey, player]);
+    const update = (key: keyof NotificationPreference, value: boolean) => {
+        if (!ready)
+            return;
+        const before = current.current;
+        const next = { ...before, [key]: value };
+        const version = ++revision.current;
+        current.current = next;
+        setPreferences(next);
+        setError("");
+        saveQueue.current = saveQueue.current.then(async () => {
+            try {
+                confirmed.current = await api.saveNotificationPreferences(next);
+            }
+            catch {
+                if (revision.current === version) {
+                    current.current = confirmed.current;
+                    setPreferences(confirmed.current);
+                    setError("Could not save this change. Please try again.");
+                }
+            }
+        });
+    };
+    const storeSound = async (nextSound: string) => { await AsyncStorage.mergeItem(localKey, JSON.stringify({ sound: nextSound })); setSound(nextSound); };
+    const close = () => { player.pause(); if (!busy)
+        setSheet(null); };
+    const toggle = (label: string, key: keyof NotificationPreference) => <SettingsToggle label={label} disabled={!ready} value={preferences[key] ?? true} onChange={value => update(key, value)}/>;
+    const preview = (source: number | string) => { try {
+        player.replace(source);
+        player.play();
     }
-  };
-
-  return (
-    <ScreenShell testID="settings-screen" header={<AppHeader />}>
-      <View style={styles.head}>
-        <Text style={styles.eyebrow}>PREFERENCES</Text>
-        <Text style={styles.title}>Settings</Text>
-        <Text style={styles.subtitle}>Configuration — never daily medication actions.</Text>
-      </View>
-
-      {loading ? (
-        <LoadingState label="Loading preferences" />
-      ) : (
-        <>
-          <Group label="Account">
-            <Row icon="person-circle-outline" title={user?.name ?? "Profile"} subtitle={user?.email} testID="settings-profile" />
-            <Row icon="key-outline" title="Authentication" subtitle="Email and password · private family access" testID="settings-auth" />
-            <Row
-              icon="log-out-outline"
-              title="Log out"
-              subtitle="Sign out on this device"
-              testID="settings-logout"
-              onPress={() => {
-                setAuthActionError(null);
-                void logout().catch((requestError) => {
-                  setAuthActionError(
-                    requestError instanceof Error ? requestError.message : "Could not sign out.",
-                  );
-                });
-              }}
-            />
-            {authActionError ? (
-              <Text style={{ color: colors.error, fontSize: 13 }}>{authActionError}</Text>
-            ) : null}
-          </Group>
-
-          <Group label="Notifications">
-            <Row
-              icon="notifications-outline"
-              title="Medicine reminders"
-              subtitle={preferences.medicine_reminders ? "You'll be reminded at your set times" : "Reminders paused"}
-              testID="settings-medicine-reminders"
-            >
-              <Switch
-                testID="switch-medicine-reminders"
-                value={preferences.medicine_reminders}
-                onValueChange={(value) => update("medicine_reminders", value)}
-                trackColor={{ false: colors.borderStrong, true: colors.brandSecondary }}
-                thumbColor={colors.onBrandPrimary}
-              />
-            </Row>
-            <Row
-              icon="calendar-outline"
-              title="Checkup reminders"
-              subtitle={preferences.checkup_reminders ? "Upcoming checkups will notify you" : "Off"}
-              testID="settings-checkup-reminders"
-            >
-              <Switch
-                testID="switch-checkup-reminders"
-                value={preferences.checkup_reminders}
-                onValueChange={(value) => update("checkup_reminders", value)}
-                trackColor={{ false: colors.borderStrong, true: colors.brandSecondary }}
-                thumbColor={colors.onBrandPrimary}
-              />
-            </Row>
-            <Row
-              icon="volume-medium-outline"
-              title="Reminder sound"
-              subtitle={preferences.reminder_sound ? "Sound is on" : "Sound is off"}
-              testID="settings-sound"
-            >
-              <Switch
-                testID="switch-reminder-sound"
-                value={preferences.reminder_sound}
-                onValueChange={(value) => update("reminder_sound", value)}
-                trackColor={{ false: colors.borderStrong, true: colors.brandSecondary }}
-                thumbColor={colors.onBrandPrimary}
-              />
-            </Row>
-            <Row
-              icon="mic-outline"
-              title="Voice reminders"
-              subtitle={preferences.voice_reminders ? "Enabled" : "Silent"}
-              testID="settings-voice"
-            >
-              <Switch
-                testID="switch-voice-reminders"
-                value={preferences.voice_reminders}
-                onValueChange={(value) => update("voice_reminders", value)}
-                trackColor={{ false: colors.borderStrong, true: colors.brandSecondary }}
-                thumbColor={colors.onBrandPrimary}
-              />
-            </Row>
-            <Row
-              icon="phone-portrait-outline"
-              title="Push notifications"
-              subtitle={preferences.push_enabled ? "Enabled after deploying a build" : "Enable after a production build"}
-              testID="settings-push"
-            >
-              <Switch
-                testID="switch-push"
-                value={preferences.push_enabled}
-                onValueChange={(value) => update("push_enabled", value)}
-                trackColor={{ false: colors.borderStrong, true: colors.brandSecondary }}
-                thumbColor={colors.onBrandPrimary}
-              />
-            </Row>
-          </Group>
-
-          <Group label="Integrations">
-            <Row
-              icon="logo-whatsapp"
-              title="WhatsApp"
-              subtitle={preferences.whatsapp_linked ? "Linked" : "Send reminders to WhatsApp"}
-              testID="settings-whatsapp"
-            >
-              <Switch
-                testID="switch-whatsapp"
-                value={preferences.whatsapp_linked}
-                onValueChange={(value) => update("whatsapp_linked", value)}
-                trackColor={{ false: colors.borderStrong, true: colors.brandSecondary }}
-                thumbColor={colors.onBrandPrimary}
-              />
-            </Row>
-            <Row
-              icon="paper-plane-outline"
-              title="Telegram"
-              subtitle={preferences.telegram_linked ? "Linked" : "Send reminders to Telegram"}
-              testID="settings-telegram"
-            >
-              <Switch
-                testID="switch-telegram"
-                value={preferences.telegram_linked}
-                onValueChange={(value) => update("telegram_linked", value)}
-                trackColor={{ false: colors.borderStrong, true: colors.brandSecondary }}
-                thumbColor={colors.onBrandPrimary}
-              />
-            </Row>
-          </Group>
-
-          <Group label="Family & Privacy">
-            <Row icon="people-outline" title="Family access" subtitle="Who can view and manage" testID="settings-family-access" onPress={() => {}} />
-            <Row icon="shield-checkmark-outline" title="Privacy" subtitle="Your health details stay private" testID="settings-privacy" onPress={() => {}} />
-          </Group>
-
-          <Group label="App">
-            <Row icon="color-palette-outline" title="Appearance" subtitle="Light theme — dark coming soon" testID="settings-appearance" onPress={() => {}} />
-            <Row icon="language-outline" title="Language" subtitle="English" testID="settings-language" onPress={() => {}} />
-            <Row icon="time-outline" title="Timezone" subtitle="Auto" testID="settings-timezone" onPress={() => {}} />
-            <Row icon="cloud-outline" title="Offline & sync" subtitle="Local caching on this device" testID="settings-offline" onPress={() => {}} />
-          </Group>
-
-          <Group label="About">
-            <Row icon="help-circle-outline" title="Help & support" subtitle="Get answers about DawaiSathi" testID="settings-help" onPress={() => {}} />
-            <Row icon="document-text-outline" title="Privacy policy" subtitle="How we protect your data" testID="settings-policy" onPress={() => {}} />
-            <Row icon="reader-outline" title="Terms" subtitle="Terms of service" testID="settings-terms" onPress={() => {}} />
-            <Row icon="information-circle-outline" title="App information" subtitle="Version 1.0" testID="settings-app-info" />
-          </Group>
-        </>
-      )}
-    </ScreenShell>
-  );
+    catch {
+        setError("Could not play this sound.");
+    } };
+    return <ScreenShell testID="settings-screen"><Text style={styles.title}>Settings</Text>
+    <SettingsGroup><SettingsRow prominent icon="person-outline" label="Profile" helper="Name, login ID and password" onPress={() => router.push("/settings/profile")}/></SettingsGroup>
+    <SettingsGroup title="What to remind me about"><SettingsRow icon="medical-outline" label="Medicine reminders">{toggle("Medicine reminders", "medicine_reminders")}</SettingsRow><SettingsRow icon="calendar-outline" label="Checkup reminders">{toggle("Checkup reminders", "checkup_reminders")}</SettingsRow><SettingsRow icon="water-outline" label="Staggered eye drop reminders">{toggle("Staggered eye drop reminders", "eye_drop_reminders")}</SettingsRow></SettingsGroup>
+    {!preferences.medicine_reminders && <Text style={styles.warning}>Medicine reminders are off. You will not be reminded to take your medicines.</Text>}
+    <SettingsGroup title="How to remind me"><SettingsRow icon="logo-whatsapp" label="WhatsApp" helper={preferences.whatsapp_linked ? "Reminders on" : "Reminders off"}>{toggle("WhatsApp", "whatsapp_linked")}</SettingsRow>
+      <SettingsRow icon="paper-plane-outline" label="Telegram" helper={preferences.telegram_linked && preferences.telegram_reminders !== false ? "Reminders on" : "Reminders off"}>{preferences.telegram_linked ? toggle("Telegram", "telegram_reminders") : <SettingsButton label="Set up" outline onPress={() => setSheet("telegram")}/>}</SettingsRow>
+      <SettingsRow icon="volume-medium-outline" label="Reminder sound" helper={sound} onPress={() => setSheet("sound")}/>
+      <SettingsRow icon="mic-outline" label="Voice note reminders" helper="Play attached voice notes">{toggle("Voice note reminders", "voice_reminders")}</SettingsRow>
+    </SettingsGroup>
+    <SettingsGroup title="Comfort"><SettingsRow icon="text-outline" label="Text size" helper={textSize} onPress={() => setSheet("text")}/><SettingsRow icon="hand-left-outline" label="Haptic feedback" helper="Gentle buzz when you tap"><SettingsToggle label="Haptic feedback" value={hapticFeedback} onChange={setHapticsEnabled}/></SettingsRow></SettingsGroup>
+    {!!error && <Text accessibilityLiveRegion="polite" style={styles.error}>{error}</Text>}
+    <SettingsButton label="Log out" soft onPress={() => setSheet("logout")}/>
+    <BottomSheet visible={sheet !== null} onClose={close} title={sheet === "sound" ? "Reminder sound" : sheet === "text" ? "Text size" : sheet === "telegram" ? "Set up Telegram" : "Log out?"}>
+      {sheet === "sound" && <View style={{ gap: 12 }}>
+        <Text style={styles.helper}>Choose and preview a sound. Notification delivery will be connected in a development build.</Text>
+        {sounds.map(item => <View key={item.name} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <PressableScale haptic={false} onPressIn={press} accessibilityRole="radio" accessibilityState={{ checked: sound === item.name }} aria-checked={sound === item.name} accessibilityLabel={item.name} onPress={() => { void storeSound(item.name).catch(() => setError("Could not save sound.")); }} style={[styles.row, { flex: 1 }]}><Ionicons name={sound === item.name ? "radio-button-on" : "radio-button-off"} size={24} color="#0F6E56"/><Text style={styles.label}>{item.name}</Text></PressableScale>
+          <PressableScale scaleTo={0.88} accessibilityLabel={`Preview ${item.name}`} onPress={() => preview(item.source)} style={{ minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}><Ionicons name="play" size={24} color="#0F6E56"/></PressableScale>
+        </View>)}
+      </View>}
+      {sheet === "text" && <View accessibilityRole="radiogroup">{(["Normal", "Large", "Extra large"] as TextSize[]).map(size => <PressableScale key={size} accessibilityRole="radio" accessibilityLabel={size} accessibilityState={{ checked: textSize === size }} aria-checked={textSize === size} onPress={() => setTextSize(size)} style={styles.row}><Ionicons name={textSize === size ? "radio-button-on" : "radio-button-off"} size={24} color="#0F6E56"/><Text style={styles.label}>{size}</Text></PressableScale>)}</View>}
+      {sheet === "telegram" && <View style={{ gap: 16 }}><Text style={styles.label}>1. Install or open Telegram</Text><SettingsButton label="Open Telegram" onPress={() => { void Linking.openURL("https://telegram.org/apps").catch(() => setError("Could not open Telegram.")); }}/><Text style={styles.label}>2. Connect DawaiSathi</Text><Text style={styles.helper}>Telegram account linking is not configured yet. You will be able to connect here when the reminder bot is available.</Text><SettingsButton label="Connect DawaiSathi — coming soon" disabled onPress={() => { }}/></View>}
+      {sheet === "logout" && <View style={{ gap: 14 }}><Text style={styles.helper}>Log out? You will need your ID and password to come back.</Text><SettingsButton label="Stay logged in" disabled={busy} onPress={close}/><SettingsButton label={busy ? "Logging out…" : "Log out"} outline disabled={busy} onPress={() => { setBusy(true); void logout().catch(e => setError(e instanceof Error ? e.message : "Could not log out.")).finally(() => setBusy(false)); }}/></View>}
+    </BottomSheet>
+  </ScreenShell>;
 }
-
-function Group({ label, children }: { label: string; children: React.ReactNode }) {
-  const styles = useStyles();
-  return (
-    <View style={styles.group}>
-      <Text style={styles.groupLabel}>{label.toUpperCase()}</Text>
-      <View style={styles.groupBody}>{children}</View>
-    </View>
-  );
-}
-
-const useStyles = makeStyles((colors) =>
-  StyleSheet.create({
-    head: { gap: 4 },
-    eyebrow: { color: colors.brandPrimary, fontSize: 12, fontWeight: "700", letterSpacing: 1.2 },
-    title: { color: colors.onSurface, fontSize: 28, fontWeight: "800", letterSpacing: -0.5 },
-    subtitle: { color: colors.muted, fontSize: 14, lineHeight: 20 },
-    group: { gap: 8 },
-    groupLabel: { color: colors.muted, fontSize: 11, fontWeight: "800", letterSpacing: 1 },
-    groupBody: {
-      backgroundColor: colors.surfaceSecondary,
-      borderRadius: 20,
-      paddingHorizontal: 14,
-      overflow: "hidden",
-    },
-    row: {
-      minHeight: 72,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.divider,
-    },
-    rowIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.brandTertiary,
-    },
-    rowTitle: { color: colors.onSurface, fontSize: 15, fontWeight: "700" },
-    rowSubtitle: { color: colors.muted, fontSize: 12, marginTop: 2 },
-    pressed: { opacity: 0.85 },
-  }),
-);

@@ -1,9 +1,10 @@
+import PressableScale from "@/src/components/ui/PressableScale";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useRef, useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { TextInput } from "@/src/components/focus-input";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -233,14 +234,14 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Pressable
+        <PressableScale scaleTo={0.88} hitSlop={14}
           accessibilityLabel="Close"
           onPress={() => router.back()}
           style={({ pressed }) => [styles.close, pressed && styles.pressed]}
           testID="add-medicine-close"
         >
           <Ionicons name="close" size={22} color={colors.onSurface} />
-        </Pressable>
+        </PressableScale>
         <Text style={styles.headerTitle}>{existing ? "Edit medicine" : "Add medicine"}</Text>
         <View style={styles.close} />
       </View>
@@ -254,7 +255,7 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
           <Text style={styles.label}>Who is this for?</Text>
           <View style={styles.chips}>
             {members.map((member) => (
-              <Pressable
+              <PressableScale
                 key={member.id}
                 testID={`medicine-member-${member.id}`}
                 onPress={() => setMemberId(member.id)}
@@ -262,15 +263,15 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
               >
                 <View style={[styles.chipDot, { backgroundColor: member.color }]} />
                 <Text style={[styles.chipText, memberId === member.id && styles.chipTextActive]}>{member.name}</Text>
-              </Pressable>
+              </PressableScale>
             ))}
-            <Pressable
+            <PressableScale
               testID="medicine-member-none"
               onPress={() => setMemberId(null)}
               style={({ pressed }) => [styles.chip, memberId === null && styles.chipActive, pressed && styles.pressed]}
             >
               <Text style={[styles.chipText, memberId === null && styles.chipTextActive]}>Shared</Text>
-            </Pressable>
+            </PressableScale>
           </View>
         </View>
 
@@ -278,13 +279,13 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
           <Text style={styles.label}>How often?</Text>
           <View style={styles.chips}>
             {FREQUENCIES.map((item) => (
-              <Pressable
+              <PressableScale
                 key={item}
                 onPress={() => setFrequency(item)}
                 style={({ pressed }) => [styles.chip, frequency === item && styles.chipActive, pressed && styles.pressed]}
               >
                 <Text style={[styles.chipText, frequency === item && styles.chipTextActive]}>{item}</Text>
-              </Pressable>
+              </PressableScale>
             ))}
           </View>
         </View>
@@ -293,14 +294,14 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
           <Text style={styles.label}>Which days?</Text>
           <View style={styles.chips}>
             {WEEKDAYS.map((day) => (
-              <Pressable
+              <PressableScale
                 key={day.id}
                 testID={`medicine-day-${day.id}`}
                 onPress={() => toggleDay(day.id)}
                 style={({ pressed }) => [styles.chipCompact, days.includes(day.id) && styles.chipActive, pressed && styles.pressed]}
               >
                 <Text style={[styles.chipText, days.includes(day.id) && styles.chipTextActive]}>{day.label}</Text>
-              </Pressable>
+              </PressableScale>
             ))}
           </View>
         </View>
@@ -310,7 +311,7 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
           <Text style={styles.helper}>Pick preset times or add your own.</Text>
           <View style={styles.chips}>
             {PRESET_TIMES.map((time) => (
-              <Pressable
+              <PressableScale
                 key={time}
                 testID={`medicine-time-${time}`}
                 accessibilityRole="button"
@@ -319,7 +320,7 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
                 style={({ pressed }) => [styles.chip, times.includes(time) && styles.chipActive, pressed && styles.pressed]}
               >
                 <Text style={[styles.chipText, times.includes(time) && styles.chipTextActive]}>{time}</Text>
-              </Pressable>
+              </PressableScale>
             ))}
           </View>
           <MedicineTimePicker onSelect={addCustomTime} disabled={saving || voiceNote.busy} />
@@ -328,7 +329,7 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
               <Text style={styles.selectedTimes}>Selected times</Text>
               <View style={styles.chips}>
                 {times.map((time) => (
-                  <Pressable
+                  <PressableScale
                     key={time}
                     testID={`medicine-selected-time-${time}`}
                     accessibilityRole="button"
@@ -340,7 +341,7 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
                   >
                     <Text style={[styles.chipText, styles.chipTextActive, styles.selectedTimeText]}>{time}</Text>
                     <Ionicons name="close" size={14} color={colors.brandPrimary} />
-                  </Pressable>
+                  </PressableScale>
                 ))}
               </View>
             </View>
@@ -365,7 +366,7 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
             />
           ) : null}
           <View style={photoStyles.imageButtons}>
-            <Pressable
+            <PressableScale
               accessibilityRole="button"
               accessibilityLabel="Choose medicine photo"
               testID="medicine-photo-choose"
@@ -376,8 +377,8 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
               <Text style={photoStyles.imageButtonText}>
                 {selectedImage || imageUrl ? "Change photo" : "Choose photo"}
               </Text>
-            </Pressable>
-            <Pressable
+            </PressableScale>
+            <PressableScale
               accessibilityRole="button"
               accessibilityLabel="Take medicine photo with camera"
               testID="medicine-photo-camera"
@@ -386,9 +387,9 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
               style={({ pressed }) => [photoStyles.imageButton, pressed && photoStyles.pressed]}
             >
               <Text style={photoStyles.imageButtonText}>Take photo</Text>
-            </Pressable>
+            </PressableScale>
             {selectedImage || imageUrl ? (
-              <Pressable
+              <PressableScale
                 accessibilityRole="button"
                 accessibilityLabel="Remove medicine photo"
                 testID="medicine-photo-remove"
@@ -400,7 +401,7 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
                 style={({ pressed }) => [photoStyles.imageRemoveButton, pressed && photoStyles.pressed]}
               >
                 <Text style={photoStyles.imageRemoveText}>Remove</Text>
-              </Pressable>
+              </PressableScale>
             ) : null}
           </View>
           <Text style={photoStyles.helper}>JPEG, PNG, or WebP, up to 5 MB.</Text>
@@ -416,7 +417,7 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
           disabled={saving || voiceNote.busy}
         />
         {!existing ? (
-          <Pressable
+          <PressableScale
             testID="add-another-medicine-button"
             accessibilityRole="button"
             accessibilityLabel="Add another medicine"
@@ -427,12 +428,12 @@ function AddMedicineForm({ mode }: { mode: MedicineFormMode }) {
           >
             <Ionicons name="add" size={20} color={colors.brandPrimary} />
             <Text style={styles.addAnotherText}>Add another medicine</Text>
-          </Pressable>
+          </PressableScale>
         ) : null}
         {existing ? (
-          <Pressable onPress={archive} disabled={saving || voiceNote.busy} style={({ pressed }) => [styles.archive, pressed && styles.pressed]} testID="archive-medicine-button">
+          <PressableScale onPress={archive} disabled={saving || voiceNote.busy} style={({ pressed }) => [styles.archive, pressed && styles.pressed]} testID="archive-medicine-button">
             <Text style={styles.archiveText}>Archive medicine</Text>
-          </Pressable>
+          </PressableScale>
         ) : null}
       </ScrollView>
     </KeyboardAvoidingView>

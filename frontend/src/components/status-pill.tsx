@@ -4,13 +4,13 @@ import { StyleSheet, Text, View } from "react-native";
 import { makeStyles } from "@/src/theme";
 import { STATUS_LABEL } from "@/src/dose-status";
 
-export function StatusPill({ status, testID, compact = false }: { status: DoseStatus; testID?: string; compact?: boolean }) {
+export function StatusPill({ status, testID, compact = false, dense = false }: { status: DoseStatus; testID?: string; compact?: boolean; dense?: boolean }) {
   const styles = useStyles();
   const pillStyle = styles[`pill_${status.replace(/-/g, "_")}` as keyof typeof styles] as object | undefined;
   const textStyle = styles[`pillText_${status.replace(/-/g, "_")}` as keyof typeof styles] as object | undefined;
   return (
-    <View testID={testID} style={[styles.base, compact && styles.compact, compact && status === "locked" && styles.upcoming, pillStyle]}>
-      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} style={[styles.text, compact && styles.compactText, compact && status === "locked" && styles.upcomingText, textStyle]}>{STATUS_LABEL[status]}</Text>
+    <View testID={testID} style={[styles.base, compact && styles.compact, compact && status === "locked" && styles.upcoming, pillStyle, dense && { paddingVertical: 0, paddingHorizontal: 4, borderRadius: 6 }]}>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} style={[styles.text, compact && styles.compactText, compact && status === "locked" && styles.upcomingText, textStyle, dense && { fontSize: 12, lineHeight: 16 }]}>{STATUS_LABEL[status]}</Text>
     </View>
   );
 }
