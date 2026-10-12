@@ -10,6 +10,7 @@ dist/
 web-build/
 .settings-build-check/
 .settings-android-check/
+dist-onboarding-check/
 expo-env.d.ts
 
 # Native

@@ -57,13 +57,13 @@ export default function FamilyManagementScreen() {
     { user } = useAuth(),
     data = useData(),
     router = useRouter();
-  const params = useLocalSearchParams<{ inviteCode?: string }>();
+  const params = useLocalSearchParams<{ inviteCode?: string; section?: string }>();
   const { width, fontScale } = useWindowDimensions();
   const roomyText = fontScale > 1.2 || width < 350;
   const group = data.activeFamilyGroup,
     groupId = group?.id ?? "",
     owner = group?.owner_user_id === user?.id;
-  const [page, setPage] = useState<Page>(params.inviteCode ? "code" : "home");
+  const [page, setPage] = useState<Page>(params.inviteCode ? "code" : params.section === "members" ? "members" : "home");
   const [ownerName, setOwnerName] = useState("Family owner"),
     [name, setName] = useState(""),
     [code, setCode] = useState(params.inviteCode ?? "");
@@ -684,9 +684,7 @@ export default function FamilyManagementScreen() {
                                         fontWeight: "800",
                                       }}
                                     >
-                                      {/\bfamily\s*$/i.test(family.name)
-                                        ? family.name
-                                        : `${family.name}’s Family`}
+                                      {family.name}
                                     </Text>
                                     {active && (
                                       <View

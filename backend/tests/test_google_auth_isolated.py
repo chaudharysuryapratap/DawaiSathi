@@ -68,7 +68,17 @@ def test_google_signature_and_claim_validation(google_tokens, monkeypatch):
     assert error.value.status_code == 503
 
 
-def test_google_linking_requires_password_and_new_accounts_require_invites(isolated_auth_database, google_tokens):
+def test_google_clock_skew_is_bounded(google_tokens):
+    now = int(datetime.now(timezone.utc).timestamp())
+    # The local PC can trail Google's clock by a few seconds.
+    assert server.verify_google_identity(google_tokens(iat=now + 5))["sub"] == "google-owner"
+    for changes in ({"iat": now + 120}, {"exp": now - 120}):
+        with pytest.raises(HTTPException) as error:
+            server.verify_google_identity(google_tokens(**changes))
+        assert error.value.status_code == 401
+
+
+def test_google_linking_requires_password_and_optional_invites_work(isolated_auth_database, google_tokens):
     loop, database = isolated_auth_database
 
     async def exercise():
@@ -89,7 +99,6 @@ def test_google_linking_requires_password_and_new_accounts_require_invites(isola
             # Existing email/password access still works after linking.
             assert (await client.post("/api/auth/login", json={"email": "owner@example.com", "password": "a-strong-test-password"})).status_code == 200
             new_token = google_tokens(sub="google-member", email="member@example.com")
-            assert (await client.post("/api/auth/google", json={"id_token": new_token})).status_code == 403
             group = (await database.family_groups.find_one({}, {"_id": 0}))["id"]
             invitation = await client.post(f"/api/family-groups/{group}/invites", headers={
                 "Authorization": "Bearer " + owner.json()["access_token"],
@@ -108,16 +117,15 @@ def test_google_linking_requires_password_and_new_accounts_require_invites(isola
     loop.run_until_complete(exercise())
 
 
-def test_first_google_owner_still_requires_bootstrap(isolated_auth_database, google_tokens):
+def test_first_google_signup_does_not_claim_legacy_families(isolated_auth_database, google_tokens):
     loop, database = isolated_auth_database
 
     async def exercise():
         async with AsyncClient(transport=ASGITransport(app=server.app), base_url="http://testserver") as client:
             token = google_tokens()
-            assert (await client.post("/api/auth/google", json={"id_token": token})).status_code == 403
-            assert await database.users.count_documents({}) == 0
-            result = await client.post("/api/auth/google", json={"id_token": token, "bootstrap_token": "bootstrap-test-token"})
+            result = await client.post("/api/auth/google", json={"id_token": token})
             assert result.status_code == 200
-            assert result.json()["user"]["is_owner"] is True
+            assert result.json()["user"]["is_owner"] is False
+            assert await database.family_groups.count_documents({"user_ids": result.json()["user"]["id"]}) == 0
 
     loop.run_until_complete(exercise())

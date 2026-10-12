@@ -18,7 +18,7 @@ import { useAuth } from "@/src/auth-context";
 import { useData } from "@/src/data-context";
 import { makeStyles, useTheme } from "@/src/theme";
 
-export function FamilyGroupSelector({ accessOnly = false }: { accessOnly?: boolean } = {}) {
+export function FamilyGroupSelector({ accessOnly = false, joinOnly = false, onJoinClose }: { accessOnly?: boolean; joinOnly?: boolean; onJoinClose?: () => void } = {}) {
   const { colors } = useTheme();
   const styles = useStyles();
   const { width, fontScale } = useWindowDimensions();
@@ -35,13 +35,13 @@ export function FamilyGroupSelector({ accessOnly = false }: { accessOnly?: boole
     leaveFamilyGroup,
     refresh,
   } = useData();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(joinOnly);
   const [newName, setNewName] = useState("");
   const [renameValue, setRenameValue] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [invitingId, setInvitingId] = useState<string | null>(null);
   const [joinToken, setJoinToken] = useState("");
-  const [form, setForm] = useState<"join" | "create" | null>(null);
+  const [form, setForm] = useState<"join" | "create" | null>(joinOnly ? "join" : null);
   const [role, setRole] = useState<"member" | "care_taker">("member");
   const [scanning, setScanning] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
@@ -125,7 +125,7 @@ export function FamilyGroupSelector({ accessOnly = false }: { accessOnly?: boole
   };
 
   const label = activeFamilyGroup?.name ?? "Create family group";
-  const familyLabel = label === "Create family group" ? label : label + "'s Family";
+  const familyLabel = label;
   const accessCards = <View style={[styles.cardGrid, stackedCards && styles.stackedCards]}>
     {(["join", "create"] as const).map(kind => <LinearGradient key={kind} colors={kind === "join" ? ["#F7FCFA", "#E3F4EC"] : ["#FFFCF7", "#FFF0DC"]} style={[styles.featureCard, kind === "join" ? styles.joinCard : styles.newCard, stackedCards && styles.stackedCard]}>
       <View style={styles.featureContent}><Text accessibilityRole="header" style={styles.featureTitle}>{kind === "join" ? "Join a family" : "Create a family"}</Text><Text style={styles.featureDetail}>{kind === "join" ? "Enter the family code or invitation shared with you." : "Give a name to your family group."}</Text></View>
@@ -137,7 +137,7 @@ export function FamilyGroupSelector({ accessOnly = false }: { accessOnly?: boole
 
   return (
     <>
-      {accessOnly ? accessCards : <Pressable
+      {joinOnly ? null : accessOnly ? accessCards : <Pressable
         testID="family-group-selector"
         accessibilityLabel={`Switch family group, currently ${familyLabel}`}
         onPress={() => setOpen(true)}
@@ -148,9 +148,10 @@ export function FamilyGroupSelector({ accessOnly = false }: { accessOnly?: boole
 
       <BottomSheet
         visible={open}
-        onDismissAll={() => { if (!busy) { setOpen(false); setForm(null); setScanning(false); setPendingDelete(null); setEditingId(null); setError(null); } }}
+        onDismissAll={() => { if (!busy) { setOpen(false); setForm(null); setScanning(false); setPendingDelete(null); setEditingId(null); setError(null); onJoinClose?.(); } }}
         onClose={() => {
           if (busy) return;
+          if (joinOnly && !scanning) { onJoinClose?.(); return; }
           if (scanning) { setScanning(false); return; }
           if (pendingDelete) { setPendingDelete(null); return; }
           if (form) { setForm(null); if (accessOnly) setOpen(false); return; }
@@ -185,7 +186,7 @@ export function FamilyGroupSelector({ accessOnly = false }: { accessOnly?: boole
           {form === "create" && <><Text style={styles.detail}>Your role in this group</Text><View style={{ flexDirection: "row", gap: 10 }}>{(["member", "care_taker"] as const).map(value => <PressableScale key={value} accessibilityRole="button" accessibilityState={{ selected: role === value }} onPress={() => setRole(value)} style={[styles.roleButton, role === value && styles.roleSelected]}><Text style={styles.roleLabel}>{value === "member" ? "Member" : "Caretaker"}</Text></PressableScale>)}</View></>}
           {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
           <PressableScale accessibilityRole="button" disabled={busy} testID={form === "create" ? "family-create-submit" : "family-join-submit"} onPress={form === "create" ? submitCreate : submitJoin} style={[styles.formButton, busy && { opacity: 0.6 }]}><Text style={styles.formButtonLabel}>{busy ? "Please wait…" : form === "create" ? "Create Family" : "Join Family"}</Text></PressableScale>
-          <PressableScale accessibilityRole="button" disabled={busy} onPress={() => { setForm(null); if (accessOnly) setOpen(false); setError(null); }} style={styles.roleButton}><Text style={styles.detail}>Cancel</Text></PressableScale>
+          <PressableScale accessibilityRole="button" disabled={busy} onPress={() => { setForm(null); if (accessOnly || joinOnly) setOpen(false); setError(null); onJoinClose?.(); }} style={styles.roleButton}><Text style={styles.detail}>Cancel</Text></PressableScale>
         </View> : <>
         <View style={styles.list}>
           {familyGroups.map((group) => {
@@ -225,7 +226,7 @@ export function FamilyGroupSelector({ accessOnly = false }: { accessOnly?: boole
                         autoFocus
                       />
                     ) : (
-                      <Text style={styles.name}>{/\bfamily\s*$/i.test(group.name) ? group.name : `${group.name}’s Family`}</Text>
+                      <Text style={styles.name}>{group.name}</Text>
                     )}
                     <Text style={styles.detail}>
                       {group.member_count} {group.member_count === 1 ? "member" : "members"}

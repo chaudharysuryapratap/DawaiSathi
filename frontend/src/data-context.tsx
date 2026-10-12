@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { api } from "./api";
+import { formatFamilyName } from "./utils/family-name";
 import type {
   AttentionItem,
   Checkup,
@@ -173,7 +174,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const groups = await api.familyGroups();
-      setFamilyGroups(groups);
+      setFamilyGroups(groups.map(group => ({ ...group, name: formatFamilyName(group.name) })));
 
       const storedGroup = await storage.getItem<string | null>(ACTIVE_FAMILY_GROUP_KEY, null);
       const groupId =
@@ -313,13 +314,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       activeFamilyGroupId,
       setActiveFamilyGroup,
       createFamilyGroup: async (name, role) => {
-        const created = await api.createFamilyGroup(name, role);
+        const created = await api.createFamilyGroup(formatFamilyName(name), role);
         await refresh();
         setActiveFamilyGroup(created.id);
         return created;
       },
       renameFamilyGroup: async (id, name) => {
-        await runAndRefresh(() => api.renameFamilyGroup(id, name));
+        await runAndRefresh(() => api.renameFamilyGroup(id, formatFamilyName(name)));
       },
       leaveFamilyGroup: async (id) => {
         await api.leaveFamilyGroup(id);

@@ -448,10 +448,19 @@ def verify_google_identity(token: str) -> dict:
             token,
             lambda *args, **kwargs: GoogleRequest()(*args, **{**kwargs, "timeout": 10}),
             GOOGLE_WEB_CLIENT_ID,
+            clock_skew_in_seconds=30,
         )
     except TransportError as error:
         raise HTTPException(status_code=503, detail="Google could not be reached. Try again.") from error
     except (ValueError, GoogleAuthError) as error:
+        # Log only a fixed category, never tokens, claims, email or exception text.
+        message = str(error).lower()
+        reason = "invalid_token"
+        for fragment, category in (("too early", "clock_ahead"), ("expired", "expired"), ("audience", "client_mismatch"), ("issuer", "issuer_mismatch"), ("signature", "signature_invalid")):
+            if fragment in message:
+                reason = category
+                break
+        logging.getLogger(__name__).warning("Google identity verification rejected: %s", reason)
         raise HTTPException(status_code=401, detail="Google sign-in could not be verified. Try again.") from error
     if not claims.get("sub") or claims.get("email_verified") is not True or not claims.get("email"):
         raise HTTPException(status_code=401, detail="A verified Google email is required.")
@@ -1115,7 +1124,9 @@ async def _register_account(input: AccountRegistration, google_subject: Optional
     if await db.users.find_one({"email": email}, {"_id": 0, "id": 1}):
         raise HTTPException(status_code=409, detail="An account already exists for this email")
 
-    owner_registration = await db.users.count_documents({}) == 0
+    # Public signup never claims legacy families. Bootstrap remains an explicit,
+    # administrative migration path, not a requirement for ordinary accounts.
+    owner_registration = bool(input.bootstrap_token) and await db.users.count_documents({}) == 0
     invitation = None
     code_family = None
     if owner_registration:
@@ -1123,9 +1134,7 @@ async def _register_account(input: AccountRegistration, google_subject: Optional
             raise HTTPException(status_code=503, detail="Set the one-time bootstrap token before creating the owner account")
         if not input.bootstrap_token or not hmac.compare_digest(input.bootstrap_token, BOOTSTRAP_TOKEN):
             raise HTTPException(status_code=403, detail="The owner bootstrap token is invalid")
-    else:
-        if not input.invitation_token:
-            raise HTTPException(status_code=403, detail="A family invitation is required to create an account")
+    elif input.invitation_token:
         if is_family_code(input.invitation_token):
             await limit_family_code_attempts(f"register:{email}")
             code_family = await family_for_code(input.invitation_token)
@@ -1165,7 +1174,7 @@ async def _register_account(input: AccountRegistration, google_subject: Optional
         if joined.matched_count != 1:
             await db.users.delete_one({"id": user_id})
             raise HTTPException(status_code=404, detail="The family no longer exists")
-    else:
+    elif invitation:
         if invitation.get("management_invite"):
             # Registration creates an account only. The signed-in user must
             # review the family and explicitly confirm joining afterwards.
@@ -1328,7 +1337,7 @@ async def create_family_group(input: FamilyGroupCreate, request: Request):
         owned_groups = await db.family_groups.find({"owner_user_id": user["id"], **ACTIVE_FAMILY}, {"id": 1}).to_list(200)
         primary = await db.members.find_one({"is_primary": True, "family_group_ids": {"$in": [g["id"] for g in owned_groups]}, "user_id": {"$exists": False}}, {"_id": 0})
     if not primary:
-        primary = {"id": str(uuid.uuid4()), "name": user["name"], "user_id": user["id"], "email": user["email"], "role": "member", "color": MEMBER_COLORS[0], "is_primary": True, "family_group_ids": [], "created_at": now_iso()}
+        primary = {"id": str(uuid.uuid4()), "name": user["name"], "user_id": user["id"], "email": user["email"], "role": "member", "color": MEMBER_COLORS[0], "is_primary": True, "explicit_membership": True, "family_group_ids": [], "created_at": now_iso()}
         await db.members.insert_one(primary.copy())
     name = input.name.strip()
     if not name:

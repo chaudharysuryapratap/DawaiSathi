@@ -45,14 +45,14 @@ export function FamilyInviteSheet({ group, onClose }: { group: FamilyGroup | nul
     try {
       const result = await api.createFamilyInvitation(group.id, email.trim());
       setInvitation(result.token);
-      const body = `You are invited to ${group.name}'s Family on DawaiSathi.\n\nSign in or create an account with this email and invitation token:\n${result.token}\n\nThis email-specific invitation expires in 7 days. Only join a family you trust.`;
+      const body = `You are invited to ${group.name} on DawaiSathi.\n\nSign in or create an account, then join using this email and invitation token:\n${result.token}\n\nThis email-specific invitation expires in 7 days. Only join a family you trust.`;
       await Linking.openURL(`mailto:${encodeURIComponent(email.trim())}?subject=${encodeURIComponent("DawaiSathi family invitation")}&body=${encodeURIComponent(body)}`);
       setMessage("Your email app is open. Send the invitation there.");
     } catch (e) { setError(e instanceof Error ? e.message : "Could not open your email app. Copy the invitation below instead."); }
     finally { setBusy(false); inFlight.current = false; }
   };
   const close = () => { if (busy) return; setEmail(""); setInvitation(null); setMessage(null); setError(null); onClose(); };
-  const badge = <View style={styles.badge}><Ionicons name="people-outline" size={22} color={colors.brandPrimary} /><Text style={styles.badgeText} numberOfLines={2}>{group ? (/\bfamily\s*$/i.test(group.name) ? group.name : `${group.name}’s Family`).toUpperCase() : ""}</Text></View>;
+  const badge = <View style={styles.badge}><Ionicons name="people-outline" size={22} color={colors.brandPrimary} /><Text style={styles.badgeText} numberOfLines={2}>{group?.name ?? ""}</Text></View>;
   return <BottomSheet visible={!!group} onClose={close} title="Invite someone to join" testID="family-invite-sheet" appearance="family" headerAccessory={badge}>
     <Text style={styles.description}>{"Share this code or QR with people you trust to join this family's health records"}</Text>
     <View style={styles.email}><Ionicons name="mail-outline" size={22} color={colors.muted} /><TextInput value={email} onChangeText={setEmail} editable={!busy} accessibilityLabel="Member email" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} placeholder="Enter member email" placeholderTextColor={colors.muted} style={styles.input} testID="family-invite-email" /></View>

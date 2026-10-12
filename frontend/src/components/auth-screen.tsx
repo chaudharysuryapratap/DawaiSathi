@@ -17,13 +17,12 @@ import { getErrorMessage } from "@/src/utils/error-message";
 export function AuthScreen({ initialInvitationCode = "" }: { initialInvitationCode?: string } = {}) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const [screen, setScreen] = useState<"welcome" | "google" | "email">(initialInvitationCode ? "email" : "welcome");
+  const [screen, setScreen] = useState<"welcome" | "email">(initialInvitationCode ? "email" : "welcome");
   const { error: authError, login, register } = useAuth();
   const [mode, setMode] = useState<"login" | "register">(initialInvitationCode ? "register" : "login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [token, setToken] = useState(initialInvitationCode);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isRegister = mode === "register";
@@ -37,8 +36,6 @@ export function AuthScreen({ initialInvitationCode = "" }: { initialInvitationCo
           name: name.trim(),
           email: email.trim(),
           password,
-          bootstrap_token: token.trim(),
-          invitation_token: token.trim(),
         });
       } else {
         await login(email.trim(), password);
@@ -83,7 +80,7 @@ export function AuthScreen({ initialInvitationCode = "" }: { initialInvitationCo
   });
 
   if (screen !== "email") {
-    return <AuthWelcome google={screen === "google"} onGoogle={() => setScreen("google")} onEmail={() => setScreen("email")} onBack={() => setScreen("welcome")} />;
+    return <AuthWelcome onEmail={() => setScreen("email")} />;
   }
 
   return (
@@ -108,7 +105,7 @@ export function AuthScreen({ initialInvitationCode = "" }: { initialInvitationCo
           <Text accessibilityRole="header" style={styles.title}>{isRegister ? "Create your account" : "Welcome back"}</Text>
           <Text style={styles.subtitle}>
             {isRegister
-              ? "Enter your details and the invitation provided by your family owner."
+              ? "Create your account, then create or join your family."
               : "Sign in to securely access your family's care information."}
           </Text>
         </View>
@@ -154,20 +151,6 @@ export function AuthScreen({ initialInvitationCode = "" }: { initialInvitationCo
             style={styles.input}
           />
         </View>
-        {isRegister ? (
-          <View style={styles.field}>
-            <Text style={styles.label}>Family code, invitation or setup code</Text>
-            <TextInput
-              testID="auth-invitation-token"
-              value={token}
-              onChangeText={setToken}
-              autoCapitalize="none"
-              placeholder="Enter family code, invitation or setup code"
-              placeholderTextColor={colors.muted}
-              style={styles.input}
-            />
-          </View>
-        ) : null}
         {error || authError ? (
           <Text accessibilityLiveRegion="assertive" style={styles.message}>
             {error ?? authError}
@@ -177,7 +160,7 @@ export function AuthScreen({ initialInvitationCode = "" }: { initialInvitationCo
           testID="auth-submit"
           label={busy ? "Please wait…" : isRegister ? "Create account" : "Sign in"}
           onPress={() => void submit()}
-          disabled={busy || !email.trim() || !password || (isRegister && (!name.trim() || !token.trim()))}
+          disabled={busy || !email.trim() || !password || (isRegister && !name.trim())}
         />
         <PressableScale
           accessibilityRole="button"

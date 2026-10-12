@@ -16,20 +16,16 @@ import { GoogleSignInButton } from "./google-sign-in-button";
 import { PrimaryButton } from "./dawai-ui";
 
 type Props = {
-  google: boolean;
-  onGoogle: () => void;
   onEmail: () => void;
-  onBack: () => void;
 };
 
-export function AuthWelcome({ google, onGoogle, onEmail, onBack }: Props) {
+export function AuthWelcome({ onEmail }: Props) {
   const styles = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { googleLogin } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [token, setToken] = useState("");
   const [password, setPassword] = useState("");
   const [credential, setCredential] = useState<string | null>(null);
   const [linkRequired, setLinkRequired] = useState(false);
@@ -37,7 +33,7 @@ export function AuthWelcome({ google, onGoogle, onEmail, onBack }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await googleLogin({ id_token: idToken, password: password || undefined, invitation_token: token.trim() || undefined, bootstrap_token: token.trim() || undefined });
+      await googleLogin({ id_token: idToken, password: password || undefined });
     } catch (loginError) {
       if (loginError instanceof ApiRequestError && loginError.status === 409) {
         setCredential(idToken);
@@ -50,7 +46,7 @@ export function AuthWelcome({ google, onGoogle, onEmail, onBack }: Props) {
   };
 
   return (
-    <View style={styles.root} testID={google ? "auth-google-screen" : "auth-welcome-screen"}>
+    <View style={styles.root} testID="auth-welcome-screen">
       <StatusBar style="dark" />
       <LinearGradient
         colors={[colors.welcomeGradientTop, colors.welcomeGradientMiddle, colors.welcomeGradientBottom]}
@@ -59,18 +55,12 @@ export function AuthWelcome({ google, onGoogle, onEmail, onBack }: Props) {
       >
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 36, paddingBottom: insets.bottom + 24 }]}>
           <View style={styles.content}>
-            {google ? (
-              <PressableScale accessibilityRole="button" accessibilityLabel="Back to welcome" onPress={onBack} style={styles.back}>
-                <MaterialCommunityIcons name="arrow-left" size={22} color={colors.onSurface} />
-                <Text style={styles.link}>Back</Text>
-              </PressableScale>
-            ) : null}
             <View style={styles.badge}>
               <MaterialCommunityIcons name="pill" size={25} color={colors.onSurface} />
               <Text style={styles.badgeName}>DawaiSathi</Text>
             </View>
             <Text accessibilityRole="header" style={styles.headline}>
-              {google ? "Care starts with\nyour family." : "Family medicine,\nnever missed."}
+              {"Family medicine,\nnever missed."}
             </Text>
             <Text style={styles.description}>
               Track doses, share prescriptions, and keep the whole family on schedule with simple daily reminders.
@@ -82,16 +72,10 @@ export function AuthWelcome({ google, onGoogle, onEmail, onBack }: Props) {
               accessibilityLabel="A family with a medicine calendar"
             />
             <View style={styles.actions}>
-              <Text accessibilityRole="header" style={styles.welcome}>{google ? "Sign up with Google" : "Welcome"}</Text>
+              <Text accessibilityRole="header" style={styles.welcome}>Welcome</Text>
               <Text style={styles.description}>
-                {google
-                  ? "One account to keep your family's care together."
-                  : "Sign in to pick up your family's schedule right where you left off."}
+                Sign in to pick up your family's schedule right where you left off.
               </Text>
-              {google ? (
-                <>
-                  <Text style={styles.availability}>Joining a new family? Enter your invitation below. Existing members can continue directly.</Text>
-                  <TextInput accessibilityLabel="Invitation or first-account setup code" value={token} onChangeText={setToken} editable={!busy} autoCapitalize="none" placeholder="Invitation or setup code (new accounts)" placeholderTextColor={colors.muted} style={styles.input} />
                   {linkRequired ? (
                     <>
                       <TextInput accessibilityLabel="Existing DawaiSathi password" value={password} onChangeText={setPassword} editable={!busy} secureTextEntry placeholder="Your existing DawaiSathi password" placeholderTextColor={colors.muted} style={styles.input} />
@@ -100,18 +84,6 @@ export function AuthWelcome({ google, onGoogle, onEmail, onBack }: Props) {
                   ) : null}
                   <GoogleSignInButton onCredential={completeGoogle} onError={setError} disabled={busy} />
                   {error ? <Text accessibilityLiveRegion="assertive" style={styles.error}>{error}</Text> : null}
-                </>
-              ) : (
-              <PressableScale
-                accessibilityRole="button"
-                testID="auth-google-button"
-                onPress={onGoogle}
-                style={({ pressed }) => [styles.googleButton, pressed && styles.pressed]}
-              >
-                <Image source={require("../../assets/images/google-mark.svg")} style={styles.googleMark} />
-                <Text style={styles.googleText}>Continue with Google</Text>
-              </PressableScale>
-              )}
               <PressableScale disabled={busy} accessibilityRole="button" testID="auth-email-button" onPress={onEmail} style={styles.emailButton}>
                 <MaterialCommunityIcons name="email-outline" size={21} color={colors.brandPrimary} />
                 <Text style={styles.link}>Continue with email</Text>

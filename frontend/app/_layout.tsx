@@ -6,6 +6,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/src/auth-context";
 import { ErrorBoundary } from "@/src/components/error-boundary";
 import { DataProvider } from "@/src/data-context";
+import { FamilyOnboarding } from "@/src/components/family-onboarding";
 import { queryClient } from "@/src/query-client";
 
 export default function RootLayout() {
@@ -49,7 +50,7 @@ function AuthenticatedApp() {
   return (
     <QueryClientProvider client={queryClient}>
       <KeyboardProvider>
-        <DataProvider>{stack}</DataProvider>
+        <DataProvider><FamilyOnboarding>{stack}</FamilyOnboarding></DataProvider>
       </KeyboardProvider>
     </QueryClientProvider>
   );
