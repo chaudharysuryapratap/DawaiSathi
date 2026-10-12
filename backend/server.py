@@ -1296,6 +1296,16 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/ready")
+async def ready():
+    """Readiness includes MongoDB, unlike the lightweight liveness endpoint."""
+    try:
+        await client.admin.command("ping")
+    except Exception:
+        raise HTTPException(status_code=503, detail="Service is not ready") from None
+    return {"status": "ok"}
+
+
 @api_router.get("/family-groups", response_model=List[FamilyGroup])
 async def list_family_groups(request: Request):
     await ensure_family_groups()

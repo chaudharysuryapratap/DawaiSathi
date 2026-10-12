@@ -1,0 +1,8 @@
+# Use release images already built on the developer machine; never build on the small VM.
+services:
+  api:
+    build: !reset null
+    image: ${STAGING_API_IMAGE:?Set the reviewed release API image}
+  web:
+    build: !reset null
+    image: ${STAGING_WEB_IMAGE:?Set the reviewed release web image}

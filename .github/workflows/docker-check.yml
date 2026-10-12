@@ -1,0 +1,26 @@
+name: Docker developer check
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate disposable local secrets
+        run: python3 scripts/init-docker.py dev
+      - name: Build and start developer services
+        run: docker compose --env-file .env.docker up -d --build --wait --wait-timeout 600
+      - name: Read-only HTTP checks
+        run: python3 scripts/check-docker.py http://localhost:18081 --api-url http://localhost:18000
+      - name: Frontend regression and types
+        run: docker compose --env-file .env.docker exec -T frontend sh -c 'node --test scripts/*.test.cjs && yarn tsc --noEmit'
+      - name: Isolated backend regression
+        run: docker compose --env-file .env.docker --profile test run --build --rm tests
+      - name: Stop disposable CI containers
+        if: always()
+        run: docker compose --env-file .env.docker --profile test down

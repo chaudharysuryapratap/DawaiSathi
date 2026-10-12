@@ -1,0 +1,19 @@
+# Use only on the approved staging server after configuring DNS and APP_URL.
+services:
+  web:
+    ports: !reset []
+  edge:
+    image: caddy:2-alpine
+    environment:
+      STAGING_DOMAIN: ${STAGING_DOMAIN:?Set the approved staging hostname}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web: {condition: service_healthy}
+    restart: unless-stopped
+volumes:
+  caddy-data:
+  caddy-config:
