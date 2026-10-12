@@ -6,7 +6,7 @@ async function harness(taken=false){
   const states=[],calls=[];let cursor=0,failSync=false;const write=deferred();
   const dose={dose_id:'dose',medicine_id:'med',time:'08:00',logged_at:taken?'2026-10-09T08:00:00Z':null,log_id:taken?'original':null};
   const api={
-    familyGroups:async()=>{calls.push('groups');return[{id:'group'}];},members:async()=>[{id:'member',is_primary:true}],medicines:async()=>[],protocols:async()=>[],checkups:async()=>[],attention:async()=>({items:[]}),
+    familyGroups:async()=>{calls.push('groups');return[{id:'group',name:'Test Family'}];},members:async()=>[{id:'member',is_primary:true}],medicines:async()=>[],protocols:async()=>[],checkups:async()=>[],attention:async()=>({items:[]}),
     today:async()=>{calls.push('today');return{doses:[dose],protocols:[]};},history:async()=>{calls.push('history');if(failSync)throw Error('sync offline');return[];},protocolHistory:async()=>[],missedDoseHistory:async()=>[],upcomingCheckup:async()=>null,
     logDose:()=>write.promise,undoDose:()=>write.promise,
   };
@@ -14,7 +14,10 @@ async function harness(taken=false){
     react:{createContext:()=>({Provider:'provider'}),useCallback:fn=>fn,useMemo:fn=>fn(),useEffect(){},useRef(initial){const i=cursor++;states[i]??={current:initial};return states[i];},useState(initial){const i=cursor++;if(!(i in states))states[i]=typeof initial==='function'?initial():initial;return[states[i],value=>{states[i]=typeof value==='function'?value(states[i]):value;}];}},
     './api':{api},'./utils/storage':{storage:{getItem:async(key,fallback)=>key.includes('Family')?'group':key.includes('Member')?'member':fallback,setItem:async()=>{}}},
   };
-  const filename=path.resolve(__dirname,'../src/data-context.tsx'),loaded=new Module(filename,module);loaded.require=id=>mocks[id]||require(id);
+  const filename=path.resolve(__dirname,'../src/data-context.tsx'),loaded=new Module(filename,module);
+  const helperPath=path.resolve(__dirname,'../src/utils/family-name.ts'),helper=new Module(helperPath,module);
+  helper._compile(ts.transpileModule(fs.readFileSync(helperPath,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,helperPath);
+  loaded.require=id=>id==='./utils/family-name'?helper.exports:mocks[id]||require(id);
   loaded._compile(ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,filename);
   const render=()=>{cursor=0;return loaded.exports.DataProvider({children:null}).props.value;};
   await render().refresh();calls.length=0;
