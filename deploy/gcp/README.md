@@ -1,6 +1,34 @@
 # Google Cloud staging
 
-## Actual state, 10 October 2026
+## Current release, 12 October 2026
+
+Release `20261012-01` is live at **https://dawaisathi-staging-34-100-169-52.sslip.io**.
+Application source: `a007d3519b99ac80f1d3bcc730bc9dee6cdd96db`, published on
+`chaudharysuryapratap-android-securestore-startup-error` in GitHub.
+
+- Public email signup, family onboarding sheets with the two-minute no-family
+  reminder, direct Google entry on Welcome, bounded Google token clock tolerance,
+  and family name formatting are included.
+- Existing-account Google linking still requires the one-time existing password.
+  The Google web client is configured; interactive staging Google login has not
+  been verified in this release.
+- Existing staging database, media and secrets were retained. The previous image
+  references are preserved in root-only `/opt/dawaisathi/.env.before-20261012-01`.
+- Both Linux amd64 images built successfully; six isolated backend tests,
+  TypeScript checks and three setup reminder tests passed.
+- All four remote containers are healthy. Public HTTPS home, Profile/Checkups
+  deep links, database readiness, anonymous API rejection and the exact new web
+  bundle were verified after deployment. Authenticated browser flows were not
+  rerun.
+- API image config: `sha256:839c9f385e3e11e53215f72099c5fe6833a54076836e719f095abb1352876d7c`.
+- Web image config: `sha256:d3f4259e3c0b74af670dbf214ce80c797aeda3ba892218320ed660cca6e177d0`.
+- Transferred archive SHA256: `e2dd879289387238c7b67a81305740ea98dab63c3ba52226c2b31117e40dd816`.
+
+For updates, `update-release.py` preserves the environment before changing image
+references and restores the previous release automatically if Compose fails.
+The initial installation record below is historical.
+
+## Initial deployment state, 10 October 2026
 
 - Created project: `dawaisathi-staging`, display name **DawaiSathi Staging**.
 - The billing verification warning is no longer shown after the owner verified.
